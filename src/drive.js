@@ -54,13 +54,28 @@ async function uploadCsv(buffer, nomeFinal, cfg) {
       () => drive.files.update({ fileId: alvo, media, supportsAllDrives: true }),
       { label: "update" }
     );
-    const duplicatas = existentes.slice(1).map((f) => f.id);
-    if (duplicatas.length) {
-      console.warn(`[drive] ATENCAO: ${duplicatas.length} duplicata(s) de "${nomeFinal}" no destino. ` +
-        `Atualizei a primeira; remova as outras manualmente: ${duplicatas.join(", ")}`);
-    }
     console.log(`[drive] "${nomeFinal}" atualizado (id=${alvo}).`);
-    return { acao: "updated", id: alvo, duplicatas };
+
+    // Auto-dedup: se houver mais de uma copia com o mesmo nome, manda as extras
+    // pra lixeira (reversivel; some das buscas que filtram trashed=false). Assim
+    // o downstream (compilador) nunca le o mes em duplicado.
+    const extras = existentes.slice(1).map((f) => f.id);
+    const removidas = [];
+    for (const id of extras) {
+      try {
+        await withRetry(
+          () => drive.files.update({ fileId: id, requestBody: { trashed: true }, supportsAllDrives: true }),
+          { label: "trash-dup" }
+        );
+        removidas.push(id);
+      } catch (e) {
+        console.warn(`[drive] nao consegui mover duplicata ${id} pra lixeira: ${e.message}`);
+      }
+    }
+    if (extras.length) {
+      console.warn(`[drive] auto-dedup: ${removidas.length}/${extras.length} duplicata(s) de "${nomeFinal}" movidas pra lixeira (${removidas.join(", ") || "nenhuma"}).`);
+    }
+    return { acao: "updated", id: alvo, duplicatas: removidas };
   }
 
   const created = await withRetry(
