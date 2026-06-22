@@ -168,6 +168,15 @@ async function ajustarMesAnoCalendario(cal, ano, mes) {
 // clicamos no dia 1. Deixamos data_final vazio (como a Skill).
 async function setDataInicio(frame, cfg) {
   const { ano, mes } = anoMesVigente(cfg.timezone);
+
+  // Espera o flatpickr inicializar (no CI a JS pode demorar mais que a tela
+  // aparecer — sem isso, comFp=0 e caímos num fallback fragil).
+  await frame.waitForFunction(() => {
+    return [...document.querySelectorAll("input")].some(
+      (i) => i._flatpickr && (/data_inicial/i.test(i.className || "") || /in[ií]cio/i.test(i.placeholder || ""))
+    );
+  }, { timeout: 25000 }).catch(() => { /* segue; o evaluate abaixo trata/diagnostica */ });
+
   // 1) Caminho preferido: API do flatpickr. Procura o input de inicio (classe
   // data_inicial / placeholder Inicio) que tenha instancia flatpickr, e seta.
   // Devolve diagnostico se nao houver instancia (ajuda a calibrar).
@@ -246,6 +255,8 @@ async function selecionarContrato(frame, cfg, contrato) {
     || contrato.dropdown.slice(0, 6);
   const baterTexto = (t) => t && t.includes(contrato.dropdown.slice(0, 10));
 
+  // Espera o Choices.js montar o widget (no CI pode demorar).
+  await inner.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
   await wrap.scrollIntoViewIfNeeded().catch(() => {});
 
   // Abre o dropdown (ate 3 tentativas; confirma pela classe is-open).
