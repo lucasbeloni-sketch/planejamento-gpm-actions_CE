@@ -17,6 +17,7 @@ const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
 const crypto = require("crypto");
+const { anoMesVigente, contarLinhasDados } = require("./util");
 
 const DEBUG_DIR = path.join(process.cwd(), "debug");
 const FRAME_SEL = "#frameTelasGPM";
@@ -135,14 +136,6 @@ async function abrirConsulta(page, cfg) {
   ], { timeout: 20000 });
   console.log("[gpm] Consulta Servicos aberta (dentro do iframe).");
   return frame;
-}
-
-// ano/mes (1-12) do mes vigente no timezone alvo.
-function anoMesVigente(tz) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit" })
-    .formatToParts(new Date());
-  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-  return { ano: Number(p.year), mes: Number(p.month) };
 }
 
 // Garante que o calendario flatpickr aberto mostra ano/mes alvo (mes 1-12).
@@ -319,11 +312,13 @@ async function exportar(page, frame, cfg) {
   const formId = cfg.exportFormId || "form_principal";
 
   // Captura download tanto na page atual quanto em eventual popup (fallback).
+  // Captura download tanto na page atual quanto em eventual popup (fallback).
+  // Listener removido no finally pra nao vazar entre contratos.
   const ctx = page.context();
+  let onPage;
   const viaPopup = new Promise((resolve) => {
-    ctx.on("page", (p) => {
-      p.waitForEvent("download", { timeout: 28000 }).then(resolve).catch(() => {});
-    });
+    onPage = (p) => p.waitForEvent("download", { timeout: 28000 }).then(resolve).catch(() => {});
+    ctx.on("page", onPage);
   });
 
   const sub = await frame.evaluate(({ action, formId }) => {
@@ -336,6 +331,7 @@ async function exportar(page, frame, cfg) {
   }, { action, formId });
 
   if (!sub.ok) {
+    ctx.off("page", onPage);
     await dumpFrame(frame, "export-sem-form");
     throw new Error(`Export: ${sub.reason}`);
   }
@@ -350,6 +346,8 @@ async function exportar(page, frame, cfg) {
     await dumpFrame(frame, "export-sem-download");
     await dump(page, "export-sem-download-shell");
     throw new Error(`Submeti o export (${action}) mas nenhum download veio em 30s. ${e.message}`);
+  } finally {
+    ctx.off("page", onPage);
   }
   if (!download) throw new Error("Export sem objeto de download.");
 
@@ -359,10 +357,6 @@ async function exportar(page, frame, cfg) {
   await download.saveAs(destino);
   console.log(`[gpm] download recebido: "${sug}" -> ${destino}`);
   return destino;
-}
-
-function escapeRe(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Extrai os bytes do CSV do arquivo baixado, detectando o tipo:
@@ -394,7 +388,7 @@ function extrairCsv(arqPath) {
   }
 
   const md5 = crypto.createHash("md5").update(buffer).digest("hex");
-  return { buffer, md5, bytes: buffer.length, origem: ehZip ? "zip" : "csv-direto" };
+  return { buffer, md5, bytes: buffer.length, linhas: contarLinhasDados(buffer), origem: ehZip ? "zip" : "csv-direto" };
 }
 
 async function baixarContrato(page, cfg, contrato, mesAno) {
@@ -412,10 +406,10 @@ async function baixarContrato(page, cfg, contrato, mesAno) {
     throw new Error(`Falha ao exportar ${contrato.prefixo}: ${e.message}`);
   }
 
-  const { buffer, md5, bytes } = extrairCsv(zipPath);
+  const { buffer, md5, bytes, linhas } = extrairCsv(zipPath);
   const nomeFinal = `${contrato.prefixo} - ${mesAno}.csv`;
-  console.log(`[gpm] ${nomeFinal} extraido: ${bytes} bytes, md5=${md5}`);
-  return { buffer, md5, bytes, nomeFinal };
+  console.log(`[gpm] ${nomeFinal} extraido: ${bytes} bytes, ${linhas} linhas de dados, md5=${md5}`);
+  return { buffer, md5, bytes, linhas, nomeFinal };
 }
 
-module.exports = { login, baixarContrato, dump };
+module.exports = { login, baixarContrato, extrairCsv, dump };

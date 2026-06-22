@@ -2,18 +2,24 @@
 // Roda igual local e no GitHub Actions. Headless por padrao; HEADED=1 abre o
 // browser visivel (use no debug local). DRY_RUN=1 baixa mas nao envia ao Drive.
 
-const path = require("path");
 const { chromium } = require("playwright");
 const cfg = require("../config.json");
 const { login, baixarContrato, dump } = require("./gpm");
 const { uploadCsv } = require("./drive");
+const { mesAnoVigente } = require("./util");
 
-// "mm.aaaa" do mes vigente no timezone alvo (mesmo mes da Data Servico Inicio).
-function mesAnoVigente(tz) {
-  const parts = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, month: "2-digit", year: "numeric" })
-    .formatToParts(new Date());
-  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-  return `${p.month}.${p.year}`;
+// Retenta fn ate `tentativas` vezes (GPM e flaky). Loga cada tentativa.
+async function comRetry(fn, label, tentativas = 2) {
+  let err;
+  for (let i = 1; i <= tentativas; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      err = e;
+      if (i < tentativas) console.warn(`[run] ${label}: tentativa ${i}/${tentativas} falhou (${e.message}); tentando de novo...`);
+    }
+  }
+  throw err;
 }
 
 (async () => {
@@ -32,11 +38,22 @@ function mesAnoVigente(tz) {
   try {
     await login(page, cfg);
 
+    const minLinhas = cfg.minLinhasDados ?? 1;
     for (const contrato of cfg.contratos) {
       try {
-        const { buffer, md5, bytes, nomeFinal } = await baixarContrato(page, cfg, contrato, mesAno);
+        const { buffer, md5, bytes, linhas, nomeFinal } = await comRetry(
+          () => baixarContrato(page, cfg, contrato, mesAno),
+          `contrato ${contrato.prefixo}`
+        );
+
+        // Guard anti-clobber: nao sobrescrever o arquivo do mes com um CSV
+        // vazio (so cabecalho) — provavel glitch/filtro errado do GPM.
+        if (linhas < minLinhas) {
+          throw new Error(`CSV com ${linhas} linha(s) de dados (< minimo ${minLinhas}). NAO sobrescrevo o arquivo do mes (provavel glitch do GPM).`);
+        }
+
         if (dryRun) {
-          console.log(`[run] DRY_RUN: ${nomeFinal} (${bytes} bytes) NAO enviado ao Drive.`);
+          console.log(`[run] DRY_RUN: ${nomeFinal} (${bytes} bytes, ${linhas} linhas) NAO enviado ao Drive.`);
           resultados.push({ contrato: contrato.prefixo, nomeFinal, md5, bytes, acao: "dry-run" });
         } else {
           const r = await uploadCsv(buffer, nomeFinal, cfg);

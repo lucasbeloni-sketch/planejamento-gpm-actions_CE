@@ -4,7 +4,7 @@
 
 const { chromium } = require("playwright");
 const cfg = require("../config.json");
-const { login } = require("./gpm");
+const { login } = require("../src/gpm");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

@@ -4,6 +4,7 @@
   "destFolderId": "1lZ8AvXtviCYH9tXE-oG-GwNaUiGjZN0Z",
   "timezone": "America/Sao_Paulo",
   "zipPattern": "consulta_servicos",
+  "minLinhasDados": 1,
 
   "_comentario_export": "O botao verde 'Excel/CSV' chama change_lnk(): seta form_principal.action e submete num popup. Em vez de clicar (popup), submetemos o form na propria janela (target=_self) para este endpoint, capturando o download.",
   "exportFormId": "form_principal",

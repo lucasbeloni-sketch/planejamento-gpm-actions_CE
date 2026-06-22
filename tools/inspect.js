@@ -9,7 +9,7 @@
 
 const { chromium } = require("playwright");
 const cfg = require("../config.json");
-const { dump } = require("./gpm");
+const { dump } = require("../src/gpm");
 
 (async () => {
   const headless = process.env.HEADED ? false : !!process.env.CI;

@@ -9,6 +9,11 @@ permissions:
   contents: read
   issues: write              # pra abrir/comentar issue de falha
 
+# Evita 2 runs simultaneos (cron + manual) escrevendo o mesmo arquivo no Drive.
+concurrency:
+  group: baixar-consulta-servico
+  cancel-in-progress: false
+
 jobs:
   baixar:
     runs-on: ubuntu-latest
@@ -21,6 +26,9 @@ jobs:
 
       - name: Install deps
         run: npm ci || npm install
+
+      - name: Testes unitarios
+        run: npm test
 
       - name: Install Chromium (Playwright)
         run: npx playwright install --with-deps chromium

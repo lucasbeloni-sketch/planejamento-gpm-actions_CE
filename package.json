@@ -6,7 +6,10 @@
   "description": "Baixa o relatorio Consulta Servicos do GPM CE (headless) e envia o CSV ao Google Drive.",
   "scripts": {
     "start": "node src/baixar.js",
-    "inspect": "node src/inspect.js"
+    "test": "node --test",
+    "inspect": "node tools/inspect.js",
+    "diag": "node tools/diag-contrato.js",
+    "check": "node tools/check-drive.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

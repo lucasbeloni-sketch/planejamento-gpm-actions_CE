@@ -19,14 +19,20 @@ A pasta-destino e a mesma da Skill: `1lZ8AvXtviCYH9tXE-oG-GwNaUiGjZN0Z`.
 ## Estrutura
 
 ```
-config.json              contratos, pasta-destino, timezone, seletores (override)
-src/baixar.js            orquestrador (login -> por contrato: baixar + enviar)
+config.json              contratos, pasta-destino, timezone, minLinhasDados, seletores
+src/baixar.js            orquestrador (login -> por contrato: retry + guard + enviar)
 src/gpm.js               Playwright: login, navegacao, filtro, export, extracao do zip
-src/drive.js             upload/update na pasta do Drive (service account)
-src/inspect.js           helper pra calibrar seletores contra o DOM real
+src/drive.js             upload/update na pasta do Drive (service account) + auto-dedup
+src/util.js              funcoes puras (mes/ano, contagem de linhas) — testadas
 lib/google.js            auth da service account + withRetry (do precificacao-actions)
-.github/workflows/baixar.yml   cron diario + botao manual + notificacao de falha
+test/                    testes unitarios (node --test) das funcoes puras + extrairCsv
+tools/                   helpers (inspect, diag-contrato, check-drive) — calibracao/ops
+.github/workflows/baixar.yml   testes + cron diario + botao manual + notificacao de falha
 ```
+
+Guards: `minLinhasDados` no config impede sobrescrever o arquivo do mes com um CSV
+so-cabecalho (glitch do GPM). `drive.js` faz auto-dedup (manda copias extras do
+mesmo nome pra lixeira). `baixar.js` retenta cada contrato 2x (GPM e flaky).
 
 ## Secrets (GitHub -> Settings -> Secrets and variables -> Actions)
 
