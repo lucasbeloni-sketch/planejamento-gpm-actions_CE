@@ -1,0 +1,91 @@
+# Consulta Servico GPM — download automatico (GitHub Actions)
+
+Versao headless e autonoma da Skill `baixar-consulta-servico-gpm`. Baixa o
+relatorio **Consulta Servicos** do GPM CE (`https://sirtecce.gpm.srv.br/`) e
+envia o CSV — ja renomeado — para a pasta `Consulta_Servico` no Google Drive,
+sobrescrevendo o arquivo do mes.
+
+## O que mudou em relacao a Skill
+
+| Skill (Claude Desktop) | Aqui (Actions) |
+|---|---|
+| Login **manual** no Chrome | Login automatico via `GPM_USER`/`GPM_PASS` (secrets) |
+| **Claude in Chrome** clicando na UI | **Playwright headless** replicando os cliques |
+| Grava no **Drive Desktop** (G:) via ferramenta Write | Sobe pela **Drive API** (service account) na mesma pasta |
+| Dança de BOM + Write verbatim + md5 | Sobe os **bytes crus** extraidos do `.zip` (BOM intacto) |
+
+A pasta-destino e a mesma da Skill: `1lZ8AvXtviCYH9tXE-oG-GwNaUiGjZN0Z`.
+
+## Estrutura
+
+```
+config.json              contratos, pasta-destino, timezone, seletores (override)
+src/baixar.js            orquestrador (login -> por contrato: baixar + enviar)
+src/gpm.js               Playwright: login, navegacao, filtro, export, extracao do zip
+src/drive.js             upload/update na pasta do Drive (service account)
+src/inspect.js           helper pra calibrar seletores contra o DOM real
+lib/google.js            auth da service account + withRetry (do precificacao-actions)
+.github/workflows/baixar.yml   cron diario + botao manual + notificacao de falha
+```
+
+## Secrets (GitHub -> Settings -> Secrets and variables -> Actions)
+
+- `GOOGLE_CREDENTIALS` — JSON **inteiro** da key da service account (a mesma SA
+  precisa de acesso **Editor** na pasta `Consulta_Servico` do Shared Drive).
+- `GPM_USER` — usuario do GPM CE.
+- `GPM_PASS` — senha do GPM CE.
+
+## Rodar local (teste / calibracao)
+
+```powershell
+cd C:\Users\sirte\Documents\GitHub\consulta-servico-gpm-actions
+npm install
+npx playwright install chromium
+$env:GOOGLE_CREDENTIALS = Get-Content credentials.json -Raw
+$env:GPM_USER = "..."; $env:GPM_PASS = "..."
+
+# 1) Calibrar seletores contra o site real (abre o browser; logue na janela):
+$env:HEADED = "1"; npm run inspect    # gera ./debug/*.html e *.png
+
+# 2) Teste sem mexer no Drive (baixa e extrai, NAO envia):
+$env:DRY_RUN = "1"; $env:HEADED = "1"; npm start
+
+# 3) Rodada real:
+Remove-Item Env:DRY_RUN, Env:HEADED -ErrorAction SilentlyContinue; npm start
+```
+
+`credentials.json` esta no `.gitignore` — nunca commitar.
+
+## ⚠️ Calibracao dos seletores (faca isto antes do primeiro run de verdade)
+
+Os seletores em `src/gpm.js` sao a melhor aproximacao a partir da descricao da
+Skill — **nao foram validados contra o DOM real** (o site e interno/autenticado).
+Antes de confiar no run automatico:
+
+1. Rode `HEADED=1 npm run inspect`, logue na janela e deixe abrir a Consulta
+   Servicos. Veja `./debug/*.html`.
+2. Pra cada passo (login, campo de data, dropdown de contrato, botao Pesquisar,
+   icone Excel/CSV), confirme o seletor real e cole em `config.json -> selectors`
+   (eles tem prioridade sobre a heuristica do codigo).
+3. Rode com `DRY_RUN=1 HEADED=1 npm start` e ajuste ate baixar o `.zip` certo.
+
+Em qualquer falha, o codigo grava screenshot + HTML em `./debug` (e o workflow
+sobe esses artefatos). Use-os pra ajustar os seletores.
+
+## Contratos
+
+Edite `config.json -> contratos`. Cada item: `{ "dropdown": "<texto exato no GPM>",
+"prefixo": "<prefixo do arquivo>" }`. Nome final: `PREFIXO - mm.aaaa.csv` (mes/ano
+vigentes). O loop processa um contrato por vez.
+
+## Cron
+
+`0 9 * * *` = diario 09:00 UTC (06:00 BRT). Ajuste em `.github/workflows/baixar.yml`.
+Rotina diaria: a Data Servico Inicio e sempre o dia 1 do mes, entao o arquivo do
+mes vai sendo sobrescrito ate virar o mes.
+
+## Limitacoes conhecidas
+
+- **Captcha / 2FA no login**: se o GPM exigir, o login automatico nao passa.
+  Verifique com o time do GPM se da pra ter um usuario de servico sem 2FA.
+- **DOM muda**: se a UI do GPM mudar, recalibre os seletores (passo acima).

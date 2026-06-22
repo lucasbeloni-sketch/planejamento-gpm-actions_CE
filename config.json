@@ -1,0 +1,26 @@
+{
+  "baseUrl": "https://sirtecce.gpm.srv.br/",
+  "consultaUrl": "https://sirtecce.gpm.srv.br/ci/Servico/ConsultaServicos",
+  "destFolderId": "1lZ8AvXtviCYH9tXE-oG-GwNaUiGjZN0Z",
+  "timezone": "America/Sao_Paulo",
+  "zipPattern": "consulta_servicos",
+
+  "_comentario_export": "O botao verde 'Excel/CSV' chama change_lnk(): seta form_principal.action e submete num popup. Em vez de clicar (popup), submetemos o form na propria janela (target=_self) para este endpoint, capturando o download.",
+  "exportFormId": "form_principal",
+  "exportAction": "/gpm/geral/consulta_servico_csv.php",
+
+  "contratos": [
+    { "dropdown": "JA10188071/2026_SOC_SOT", "prefixo": "SOC.SOT" }
+  ],
+
+  "_comentario_selectors": "Seletores do DOM do GPM. Override sobre a heuristica do codigo. Login confirmado via inspect. Os de dentro da tela (data/contrato/pesquisar/export) precisam de mais uma rodada de inspect na tela ConsultaServicos.",
+  "selectors": {
+    "loginUser": "#idLogin",
+    "loginPass": "#idSenha",
+    "loginSubmit": "button:has-text('Entrar')",
+    "dataServicoInicio": null,
+    "contratoDropdown": null,
+    "pesquisar": null,
+    "exportarExcelCsv": null
+  }
+}

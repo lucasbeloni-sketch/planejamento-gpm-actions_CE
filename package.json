@@ -1,0 +1,16 @@
+{
+  "name": "consulta-servico-gpm-actions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Baixa o relatorio Consulta Servicos do GPM CE (headless) e envia o CSV ao Google Drive.",
+  "scripts": {
+    "start": "node src/baixar.js",
+    "inspect": "node src/inspect.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "googleapis": "^144.0.0",
+    "playwright": "^1.49.0"
+  }
+}
