@@ -291,14 +291,27 @@ async function selecionarContrato(frame, cfg, contrato) {
 
 async function pesquisar(frame, cfg) {
   const { selectors: s } = cfg;
+  const formId = cfg.exportFormId || "form_principal";
   const botao = await primeiroVisivel(frame, [
     s.pesquisar, (f) => f.getByRole("button", { name: /Pesquisar/i }),
   ]);
+  // Clicar em Pesquisar re-renderiza o iframe (POST .../pesquisar) trazendo a
+  // tabela + a toolbar de export (form_principal). O sinal confiavel de que os
+  // resultados chegaram e a PRESENCA do form_principal — NAO o texto "registros"
+  // (que so aparece se houver linhas). Sem isso, no CI (mais lento) o export
+  // rodava antes da toolbar existir -> "form_principal nao encontrado".
   await botao.click();
+  try {
+    await frame.waitForSelector(`#${formId}`, { state: "attached", timeout: 45000 });
+  } catch (e) {
+    await dumpFrame(frame, "pesquisa-sem-resultados");
+    throw new Error(`Pesquisa: toolbar de export (#${formId}) nao apareceu em 45s apos Pesquisar. Resultados nao renderizaram? (${e.message})`);
+  }
+  // Espera o texto de contagem tambem (best-effort), so pra log/estabilizacao.
   await primeiroVisivel(frame, [
     "text=/Mostrando de .* registros/i", "text=/registros/i",
-  ], { timeout: 30000 }).catch(() => {});
-  await sleep(1500);
+  ], { timeout: 5000 }).catch(() => {});
+  await sleep(500);
   console.log("[gpm] Pesquisa concluida.");
 }
 
@@ -314,6 +327,11 @@ async function exportar(page, frame, cfg) {
   // Captura download tanto na page atual quanto em eventual popup (fallback).
   // Captura download tanto na page atual quanto em eventual popup (fallback).
   // Listener removido no finally pra nao vazar entre contratos.
+  // Guard: no CI a toolbar de export pode ainda nao ter renderizado. Espera o
+  // form existir antes de tentar submeter (pesquisar() ja espera, isto e defesa
+  // em profundidade caso a ordem de chamada mude).
+  await frame.waitForSelector(`#${formId}`, { state: "attached", timeout: 30000 }).catch(() => {});
+
   const ctx = page.context();
   let onPage;
   const viaPopup = new Promise((resolve) => {
@@ -412,4 +430,8 @@ async function baixarContrato(page, cfg, contrato, mesAno) {
   return { buffer, md5, bytes, linhas, nomeFinal };
 }
 
-module.exports = { login, baixarContrato, extrairCsv, dump };
+module.exports = {
+  login, baixarContrato, extrairCsv, dump, dumpFrame,
+  // expostos p/ debug/calibracao (tools/*):
+  abrirConsulta, setDataInicio, selecionarContrato, pesquisar, exportar,
+};
