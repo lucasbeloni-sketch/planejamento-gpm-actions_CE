@@ -101,10 +101,10 @@ vigentes). O loop processa um contrato por vez.
 
 ## Cron
 
-`0 9 * * *` = diario 09:00 UTC (06:00 BRT). Ajuste em `.github/workflows/baixar.yml`.
-Rotina diaria: a Data Servico Inicio e sempre o dia 1 do mes, entao o arquivo do
-mes vai sendo sobrescrito ate virar o mes. O `compilador` roda logo apos o
-`baixar` no mesmo run (nao tem cron proprio).
+`0 * * * *` = de hora em hora (minuto 0 UTC). Ajuste em `.github/workflows/baixar.yml`.
+A Data Servico Inicio e sempre o dia 1 do mes, entao o arquivo do mes vai sendo
+sobrescrito a cada hora ate virar o mes. O `compilador` roda logo apos o `baixar`
+no mesmo run (nao tem cron proprio).
 
 ## Limitacoes conhecidas
 

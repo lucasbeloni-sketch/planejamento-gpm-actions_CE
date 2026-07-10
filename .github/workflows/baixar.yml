@@ -2,7 +2,7 @@ name: Consulta Servico GPM (baixar + compilar)
 
 on:
   schedule:
-    - cron: "0 9 * * *"     # diario 09:00 UTC = 06:00 BRT. Ajuste se quiser.
+    - cron: "0 * * * *"     # de hora em hora (minuto 0). Ajuste se quiser.
   workflow_dispatch: {}      # botao manual na aba Actions
 
 permissions:
