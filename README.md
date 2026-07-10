@@ -1,9 +1,16 @@
-# Consulta Servico GPM — download automatico (GitHub Actions)
+# Consulta Servico GPM — pipeline automatico (GitHub Actions)
 
-Versao headless e autonoma da Skill `baixar-consulta-servico-gpm`. Baixa o
-relatorio **Consulta Servicos** do GPM CE (`https://sirtecce.gpm.srv.br/`) e
-envia o CSV — ja renomeado — para a pasta `Consulta_Servico` no Google Drive,
-sobrescrevendo o arquivo do mes.
+Pipeline de 2 etapas, sequenciais, no mesmo workflow:
+
+1. **baixar** (Node/Playwright) — baixa o relatorio **Consulta Servicos** do GPM
+   CE (`https://sirtecce.gpm.srv.br/`) e envia o CSV — ja renomeado — para a pasta
+   `Consulta_Servico` no Google Drive, sobrescrevendo o arquivo do mes.
+2. **compilador** (Python/pandas) — roda **so depois** do baixar (`needs: baixar`).
+   Le os CSVs dessa mesma pasta do Drive e compila pra planilha
+   (`BD_ConsultaServ`), subindo tambem o `BANCO.csv` consolidado. Codigo em
+   `compilador/`.
+
+Versao headless e autonoma da Skill `baixar-consulta-servico-gpm`.
 
 ## O que mudou em relacao a Skill
 
@@ -27,7 +34,11 @@ src/util.js              funcoes puras (mes/ano, contagem de linhas) — testada
 lib/google.js            auth da service account + withRetry (do precificacao-actions)
 test/                    testes unitarios (node --test) das funcoes puras + extrairCsv
 tools/                   helpers (inspect, diag-contrato, check-drive) — calibracao/ops
-.github/workflows/baixar.yml   testes + cron diario + botao manual + notificacao de falha
+compilador/              etapa 2: script Python que compila os CSVs do Drive pro Sheet
+  compilador_consulta_servicos_GPM_CE.py
+  requirements.txt
+  README.md
+.github/workflows/baixar.yml   pipeline: baixar -> compilador + cron diario + botao manual + notificacao
 ```
 
 Guards: `minLinhasDados` no config impede sobrescrever o arquivo do mes com um CSV
@@ -36,10 +47,12 @@ mesmo nome pra lixeira). `baixar.js` retenta cada contrato 2x (GPM e flaky).
 
 ## Secrets (GitHub -> Settings -> Secrets and variables -> Actions)
 
-- `GOOGLE_CREDENTIALS` — JSON **inteiro** da key da service account (a mesma SA
-  precisa de acesso **Editor** na pasta `Consulta_Servico` do Shared Drive).
+- `GOOGLE_CREDENTIALS` — JSON **inteiro** da key da service account (etapa baixar).
+  A mesma SA precisa de acesso **Editor** na pasta `Consulta_Servico` do Shared Drive.
 - `GPM_USER` — usuario do GPM CE.
 - `GPM_PASS` — senha do GPM CE.
+- `GOOGLE_CREDENTIALS_B64` — mesma key da SA, porem em **base64** (etapa compilador).
+  A SA tambem precisa de acesso a planilha `BD_ConsultaServ`.
 
 ## Rodar local (teste / calibracao)
 
@@ -88,7 +101,8 @@ vigentes). O loop processa um contrato por vez.
 
 `0 9 * * *` = diario 09:00 UTC (06:00 BRT). Ajuste em `.github/workflows/baixar.yml`.
 Rotina diaria: a Data Servico Inicio e sempre o dia 1 do mes, entao o arquivo do
-mes vai sendo sobrescrito ate virar o mes.
+mes vai sendo sobrescrito ate virar o mes. O `compilador` roda logo apos o
+`baixar` no mesmo run (nao tem cron proprio).
 
 ## Limitacoes conhecidas
 

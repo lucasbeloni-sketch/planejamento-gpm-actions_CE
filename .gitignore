@@ -4,3 +4,11 @@ credentials.json
 .env
 debug/
 downloads/
+
+# compilador (Python)
+__pycache__/
+*.pyc
+*.b64
+compilador/BANCO.csv
+compilador/credentials*.json
+compilador/service_account*.json

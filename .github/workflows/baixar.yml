@@ -1,4 +1,4 @@
-name: Baixar Consulta Servico GPM
+name: Consulta Servico GPM (baixar + compilar)
 
 on:
   schedule:
@@ -11,7 +11,7 @@ permissions:
 
 # Evita 2 runs simultaneos (cron + manual) escrevendo o mesmo arquivo no Drive.
 concurrency:
-  group: baixar-consulta-servico
+  group: consulta-servico-gpm
   cancel-in-progress: false
 
 jobs:
@@ -49,8 +49,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  notify:
+  # Roda so depois do baixar terminar OK. Le o CSV que o baixar subiu no Drive e compila pro Sheet.
+  compilador:
     needs: baixar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r compilador/requirements.txt
+
+      - name: Run compilador
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+        run: python compilador/compilador_consulta_servicos_GPM_CE.py
+
+  notify:
+    needs: [baixar, compilador]
     if: failure()
     runs-on: ubuntu-latest
     steps:
@@ -61,7 +82,7 @@ jobs:
             const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const { owner, repo } = context.repo;
             const open = await github.rest.issues.listForRepo({ owner, repo, state: "open", labels: label });
-            const body = `Download da Consulta Servicos falhou no run ${context.runId}.\n\nLog: ${url}\n\nO CSV do mes pode estar desatualizado ate o proximo run dar certo. Baixe os artefatos de debug do run pra ver os screenshots.`;
+            const body = `Pipeline Consulta Servicos (baixar + compilar) falhou no run ${context.runId}.\n\nLog: ${url}\n\nO CSV do mes ou a planilha podem estar desatualizados ate o proximo run dar certo. Baixe os artefatos de debug do run pra ver os screenshots.`;
             if (open.data.length) {
               await github.rest.issues.createComment({ owner, repo, issue_number: open.data[0].number, body });
             } else {
