@@ -44,11 +44,20 @@ def get_credentials():
     if _CREDENTIALS is not None:
         return _CREDENTIALS
 
-    secret = os.getenv("GOOGLE_CREDENTIALS_B64")
-    if not secret:
-        raise ValueError("O secret 'GOOGLE_CREDENTIALS_B64' não foi encontrado!")
+    # Usa o mesmo secret do job baixar: GOOGLE_CREDENTIALS = JSON cru da service account.
+    # Fallback pra GOOGLE_CREDENTIALS_B64 (base64) por compatibilidade.
+    raw = os.getenv("GOOGLE_CREDENTIALS")
+    if raw:
+        credentials_json = raw
+    else:
+        b64 = os.getenv("GOOGLE_CREDENTIALS_B64")
+        if not b64:
+            raise ValueError(
+                "Nenhum secret de credencial encontrado! Defina 'GOOGLE_CREDENTIALS' "
+                "(JSON cru) ou 'GOOGLE_CREDENTIALS_B64' (base64)."
+            )
+        credentials_json = base64.b64decode(b64).decode("utf-8")
 
-    credentials_json = base64.b64decode(secret).decode("utf-8")
     info = json.loads(credentials_json)
 
     _CREDENTIALS = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)

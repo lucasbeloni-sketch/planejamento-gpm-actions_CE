@@ -47,12 +47,14 @@ mesmo nome pra lixeira). `baixar.js` retenta cada contrato 2x (GPM e flaky).
 
 ## Secrets (GitHub -> Settings -> Secrets and variables -> Actions)
 
-- `GOOGLE_CREDENTIALS` — JSON **inteiro** da key da service account (etapa baixar).
-  A mesma SA precisa de acesso **Editor** na pasta `Consulta_Servico` do Shared Drive.
+- `GOOGLE_CREDENTIALS` — JSON **inteiro** da key da service account. **Usado pelas
+  duas etapas** (baixar e compilador). A SA precisa de acesso **Editor** na pasta
+  `Consulta_Servico` do Shared Drive **e** na planilha `BD_ConsultaServ`.
 - `GPM_USER` — usuario do GPM CE.
 - `GPM_PASS` — senha do GPM CE.
-- `GOOGLE_CREDENTIALS_B64` — mesma key da SA, porem em **base64** (etapa compilador).
-  A SA tambem precisa de acesso a planilha `BD_ConsultaServ`.
+
+> O compilador tambem aceita `GOOGLE_CREDENTIALS_B64` (base64) como fallback, mas
+> nao e necessario: com `GOOGLE_CREDENTIALS` (JSON cru) as duas etapas funcionam.
 
 ## Rodar local (teste / calibracao)
 

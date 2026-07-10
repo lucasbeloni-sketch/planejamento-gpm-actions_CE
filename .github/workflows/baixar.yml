@@ -67,7 +67,7 @@ jobs:
 
       - name: Run compilador
         env:
-          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: python compilador/compilador_consulta_servicos_GPM_CE.py
 
   notify:
