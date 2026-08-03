@@ -104,6 +104,9 @@ jobs:
   # Etapa 3: consolida CSVs + Plan_Principal!B5:CH das unidades no COMPILADO.csv.
   compilar_planilha:
     needs: plan_principal
+    # always() para nao herdar o skip de baixar/compilador na cadeia; roda sempre
+    # que a Etapa 2 tiver passado.
+    if: ${{ always() && needs.plan_principal.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
