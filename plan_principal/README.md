@@ -42,8 +42,8 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 
 | Variavel | Default | Descricao |
 |----------|---------|-----------|
-| `FOLDER_ID` | `16I_Lg…` | Pasta de origem dos CSVs. |
-| `DEST_FOLDER_ID` | `11_6Wb…` | Pasta de destino do `COMPILADO.csv`. |
+| `FOLDER_ID` | `1fdfj…` | Pasta `BACKUP_Planejamento`: CSVs de planejamento por unidade dos meses fechados (ex.: `JZN.csv`). **Nao** e a pasta do BANCO/Consulta_Servico. Leitura nao-recursiva (a subpasta `COMPLETO` nao e lida). |
+| `DEST_FOLDER_ID` | `11_6Wb…` | Subpasta `COMPLETO` (destino do `COMPILADO.csv`). |
 | `DEST_CSV_NAME` | `COMPILADO.csv` | Nome do arquivo consolidado. |
 | `SOURCE_SHEET_NAME` | `Plan_Principal` | Aba lida nas unidades. |
 | `SOURCE_RANGE_A1` | `B5:CH` | Intervalo lido. |

@@ -29,7 +29,11 @@ from common import load_service_account_credentials, execute_with_retries
 # =========================
 # CONFIGURACOES
 # =========================
-FOLDER_ID = os.getenv("FOLDER_ID", "16I_LgXXXt064zuyWY24_pOxZhy7WQcOf")
+# Pasta de origem dos CSVs de PLANEJAMENTO (BACKUP_Planejamento): CSVs por unidade
+# de meses fechados (ex.: JZN.csv). NAO e a pasta do BANCO/Consulta_Servico.
+# Leitura nao-recursiva: a subpasta COMPLETO (destino) nao e lida.
+FOLDER_ID = os.getenv("FOLDER_ID", "1fdfjTuxFa76YSgtbQ4-RQy0THlJy83Hs")
+# Destino do COMPILADO.csv = subpasta COMPLETO dentro da BACKUP_Planejamento.
 DEST_FOLDER_ID = os.getenv("DEST_FOLDER_ID", "11_6WbEe5m5EByGud9EPrim3scXujvLOq")
 DEST_CSV_NAME = os.getenv("DEST_CSV_NAME", "COMPILADO.csv")
 
