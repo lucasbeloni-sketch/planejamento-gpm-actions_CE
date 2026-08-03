@@ -3,7 +3,12 @@ name: Consulta Servico GPM (baixar + compilar)
 on:
   schedule:
     - cron: "0 */2 * * *"   # de 2 em 2 horas (minuto 0). Ajuste se quiser.
-  workflow_dispatch: {}      # botao manual na aba Actions
+  workflow_dispatch:         # botao manual na aba Actions
+    inputs:
+      somente_plan:
+        description: "Pular baixar+compilador e rodar so as Etapas 2 e 3 (Plan_Principal + COMPILADO)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,6 +21,7 @@ concurrency:
 
 jobs:
   baixar:
+    if: ${{ !inputs.somente_plan }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -52,6 +58,7 @@ jobs:
   # Roda so depois do baixar terminar OK. Le o CSV que o baixar subiu no Drive e compila pro Sheet.
   compilador:
     needs: baixar
+    if: ${{ !inputs.somente_plan }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -73,6 +80,9 @@ jobs:
   # Etapa 2: reaplica/congela as formulas da Plan_Principal de cada unidade + chuva.
   plan_principal:
     needs: compilador
+    # Roda no fluxo normal (compilador OK) e tambem quando somente_plan pula o
+    # compilador (result 'skipped'). So nao roda se o compilador falhar/cancelar.
+    if: ${{ always() && needs.compilador.result != 'failure' && needs.compilador.result != 'cancelled' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
