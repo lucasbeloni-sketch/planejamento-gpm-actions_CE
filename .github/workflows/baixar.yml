@@ -2,7 +2,7 @@ name: Consulta Servico GPM (baixar + compilar)
 
 on:
   schedule:
-    - cron: "0 * * * *"     # de hora em hora (minuto 0). Ajuste se quiser.
+    - cron: "0 */2 * * *"   # de 2 em 2 horas (minuto 0). Ajuste se quiser.
   workflow_dispatch: {}      # botao manual na aba Actions
 
 permissions:
@@ -70,8 +70,50 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: python compilador/compilador_consulta_servicos_GPM_CE.py
 
+  # Etapa 2: reaplica/congela as formulas da Plan_Principal de cada unidade + chuva.
+  plan_principal:
+    needs: compilador
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r plan_principal/requirements.txt
+
+      - name: Run Etapa 2 - atualizar Plan_Principal (CE)
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python plan_principal/atualizar_plan_principal_CE.py
+
+  # Etapa 3: consolida CSVs + Plan_Principal!B5:CH das unidades no COMPILADO.csv.
+  compilar_planilha:
+    needs: plan_principal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r plan_principal/requirements.txt
+
+      - name: Run Etapa 3 - compilar planilha principal (CE)
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python plan_principal/compilador_planilha_principal_CE.py
+
   notify:
-    needs: [baixar, compilador]
+    needs: [baixar, compilador, plan_principal, compilar_planilha]
     if: failure()
     runs-on: ubuntu-latest
     steps:

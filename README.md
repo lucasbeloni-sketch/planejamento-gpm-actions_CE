@@ -1,6 +1,6 @@
 # Consulta Servico GPM — pipeline automatico (GitHub Actions)
 
-Pipeline de 2 etapas, sequenciais, no mesmo workflow:
+Pipeline de 4 etapas, sequenciais, no mesmo workflow:
 
 1. **baixar** (Node/Playwright) — baixa o relatorio **Consulta Servicos** do GPM
    CE (`https://sirtecce.gpm.srv.br/`) e envia o CSV — ja renomeado — para a pasta
@@ -9,6 +9,13 @@ Pipeline de 2 etapas, sequenciais, no mesmo workflow:
    Le os CSVs dessa mesma pasta do Drive e compila pra planilha
    (`BD_ConsultaServ`), subindo tambem o `BANCO.csv` consolidado. Codigo em
    `compilador/`.
+3. **plan_principal** (Python/gspread) — para cada unidade em `BD_Planilhas`,
+   reaplica/congela as formulas da `Plan_Principal` e preenche a chuva (BF/BG).
+   Codigo em `plan_principal/atualizar_plan_principal_CE.py`.
+4. **compilar_planilha** (Python) — consolida CSVs + `Plan_Principal!B5:CH` das
+   unidades no `COMPILADO.csv`. Codigo em `plan_principal/compilador_planilha_principal_CE.py`.
+
+As etapas 3 e 4 estao documentadas em [`plan_principal/README.md`](plan_principal/README.md).
 
 Versao headless e autonoma da Skill `baixar-consulta-servico-gpm`.
 
@@ -101,10 +108,10 @@ vigentes). O loop processa um contrato por vez.
 
 ## Cron
 
-`0 * * * *` = de hora em hora (minuto 0 UTC). Ajuste em `.github/workflows/baixar.yml`.
+`0 */2 * * *` = de 2 em 2 horas (minuto 0 UTC). Ajuste em `.github/workflows/baixar.yml`.
 A Data Servico Inicio e sempre o dia 1 do mes, entao o arquivo do mes vai sendo
-sobrescrito a cada hora ate virar o mes. O `compilador` roda logo apos o `baixar`
-no mesmo run (nao tem cron proprio).
+sobrescrito a cada rodada ate virar o mes. As etapas `compilador`, `plan_principal`
+e `compilar_planilha` rodam em sequencia apos o `baixar` no mesmo run (sem cron proprio).
 
 ## Limitacoes conhecidas
 
