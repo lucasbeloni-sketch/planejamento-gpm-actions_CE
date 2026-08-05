@@ -24,17 +24,32 @@ Detalhes de cada modulo: [`compilador/README.md`](compilador/README.md) e
 
 ## ⚠️ Estado atual (05/08/2026)
 
-- **Etapa 1 (`baixar`) esta falhando** em todos os runs recentes. Erro:
-  `Pesquisa: toolbar de export (#form_principal) nao apareceu em 45s apos Pesquisar.`
-  Ou seja: apos o clique em **Pesquisar** os resultados nao renderizam (ou o
-  seletor da toolbar mudou). Consequencia: `compilador` fica `skipped` e o CSV do
-  mes nao e atualizado.
-- **Etapas 3 e 4 estao passando** — elas rodam mesmo com o `compilador` skipped
-  (por design), so nao rodam se ele **falhar**. O `COMPILADO.csv` e as
-  `Plan_Principal` seguem atualizando com o banco que ja estava no Drive.
-- Proximo passo: baixar os artefatos `debug` do ultimo run (screenshot + HTML da
-  tela) e recalibrar os seletores da tela ConsultaServicos — ver
-  [Calibracao](#calibracao-dos-seletores) abaixo.
+**Etapa 1 (`baixar`) falha desde 01/08 — por busca vazia, nao por DOM quebrado.**
+
+Erro: `Pesquisa: toolbar de export (#form_principal) nao apareceu em 45s apos Pesquisar.`
+
+Diagnostico confirmado pelo artefato `debug` do run: o GPM respondeu a pesquisa
+com o alerta `alerta_aviso = 'Nenhum registro encontrado'` e **sem** o
+`#form_principal` — o GPM nao renderiza a toolbar de export quando nao ha linhas.
+Login, data, contrato e Pesquisar funcionaram; o contrato `SOC.SOT` e que nao tem
+servico lancado de 01/08 pra ca.
+
+O historico dos runs bate com o vira-mes: **27–31/07 = 46 runs, 100% success;
+01/08 em diante = 100% failure**. Nada foi alterado no codigo nesse intervalo.
+
+- **Nao e caso de recalibrar seletores.** A Etapa 1 volta sozinha quando o
+  primeiro servico de agosto for lancado no GPM.
+- Se ficar vazio por muito tempo, confira se o contrato
+  (`config.json -> contratos`) nao venceu. Teste que separa os dois casos: rodar
+  local com data de um mes que tinha dado — se exportar, era so mes vazio.
+- Consequencia hoje: `compilador` fica `skipped` e o CSV do mes nao e atualizado.
+- **Etapas 3 e 4 seguem passando** — elas rodam mesmo com o `compilador` skipped
+  (por design do `somente_plan`), so nao rodam se ele **falhar**. O
+  `COMPILADO.csv` e as `Plan_Principal` continuam atualizando com o banco que ja
+  estava no Drive.
+
+> Limitacao conhecida: hoje "mes sem servico" e "export quebrado" dao o mesmo erro
+> e a mesma issue de falha a cada 2h. Ver [Limitacoes](#limitacoes-conhecidas).
 
 ## O que mudou em relacao a Skill original
 
@@ -135,10 +150,12 @@ python plan_principal/compilador_planilha_principal_CE.py   # Etapa 4
 Os seletores da tela ConsultaServicos sao heuristica no `src/gpm.js`, com override
 por `config.json -> selectors` (o override tem prioridade). Os de login estao
 confirmados; os de dentro da tela (data, contrato, Pesquisar, export) estao `null`
-e dependem da heuristica — **e ai que a Etapa 1 esta quebrando hoje**.
+e dependem da heuristica — que **funciona** (46 runs verdes em 27–31/07). So
+recalibre se o dump mostrar DOM diferente, **nao** por causa de busca vazia.
 
 1. Baixe os artefatos `debug` do run que falhou (ou rode `HEADED=1 npm run inspect`
-   local e logue na janela). Veja `./debug/*.html` e `*.png`.
+   local e logue na janela). Veja `./debug/*.html` e `*.png`. Se o HTML tiver
+   `alerta_aviso = 'Nenhum registro encontrado'`, o problema **nao** e seletor.
 2. Pra cada passo (campo de data, dropdown de contrato, botao Pesquisar, icone
    Excel/CSV, toolbar `#form_principal`), confirme o seletor real e cole em
    `config.json -> selectors`.
@@ -162,8 +179,11 @@ impede dois runs (cron + manual) escrevendo no Drive/Sheets ao mesmo tempo.
 
 ## Limitacoes conhecidas
 
-- **DOM do GPM muda**: quebra a Etapa 1 e exige recalibrar os seletores (e o que
-  esta acontecendo agora).
+- **Mes sem servico = falha**: se a busca nao retorna linhas, o GPM nao renderiza
+  o `#form_principal` e o `pesquisar()` (`src/gpm.js`) trata isso como erro fatal
+  — mesma mensagem e mesma issue que um export realmente quebrado, a cada 2h. E o
+  que acontece todo inicio de mes, ate o primeiro servico ser lancado.
+- **DOM do GPM muda**: quebra a Etapa 1 e exige recalibrar os seletores.
 - **Captcha / 2FA no login**: se o GPM passar a exigir, o login automatico nao
   passa. Ideal seria um usuario de servico sem 2FA.
 - **`gspread` nao tem `flush()`**: a Etapa 3 escreve as formulas, espera
