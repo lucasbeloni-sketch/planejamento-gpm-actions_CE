@@ -1,9 +1,9 @@
 {
-  "name": "consulta-servico-gpm-actions",
+  "name": "planejamento-gpm-actions-ce",
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
-  "description": "Baixa o relatorio Consulta Servicos do GPM CE (headless) e envia o CSV ao Google Drive.",
+  "description": "Pipeline de planejamento CE: baixa o relatorio Consulta Servicos do GPM (headless, Etapa 1) e alimenta as Etapas 2-4 (BD_ConsultaServ, Plan_Principal, COMPILADO.csv).",
   "scripts": {
     "start": "node src/baixar.js",
     "test": "node --test",

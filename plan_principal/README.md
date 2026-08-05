@@ -1,12 +1,17 @@
-# Plan_Principal (CE) — Etapas 2 e 3
+# Plan_Principal (CE) — Etapas 3 e 4
 
-Continuacao headless do pipeline `consulta-servico-gpm-actions_CE`. Rodam depois
-do `baixar` + `compilador` (Etapa 1), no mesmo workflow (`.github/workflows/baixar.yml`).
+Parte final do pipeline `planejamento-gpm-actions_CE`. Rodam depois do `baixar`
+(Etapa 1) + `compilador` (Etapa 2), no mesmo workflow
+([`../.github/workflows/pipeline.yml`](../.github/workflows/pipeline.yml)).
+
+> Numeracao: estas etapas eram chamadas de "2 e 3" quando o pipeline tinha 3
+> jobs. Hoje o pipeline tem 4 e elas sao a **3** e a **4** — os nomes dos scripts
+> nao mudaram.
 
 | Etapa | Script | O que faz |
 |-------|--------|-----------|
-| 2 | `atualizar_plan_principal_CE.py` | Para cada unidade em `BD_Planilhas`, reaplica as formulas da `Plan_Principal`, aguarda o calculo, **congela** (cola valores) e carimba `G3`. Depois roda o `preencherChuva` (BF/BG via Open-Meteo). Traducao fiel do Apps Script `atualizarPlan_Principal` + `preencherChuva`. |
-| 3 | `compilador_planilha_principal_CE.py` | Consolida os CSVs de `FOLDER_ID` + `Plan_Principal!B5:CH` das unidades, normaliza, remove duplicados, ordena por data e grava `COMPILADO.csv` em `DEST_FOLDER_ID`. Carimba timestamp em `BD_Config_CE!C2`. |
+| 3 | `atualizar_plan_principal_CE.py` | Para cada unidade em `BD_Planilhas`, reaplica as formulas da `Plan_Principal`, aguarda o calculo, **congela** (cola valores) e carimba `G3`. Depois roda o `preencherChuva` (BF/BG via Open-Meteo). Traducao fiel do Apps Script `atualizarPlan_Principal` + `preencherChuva`. |
+| 4 | `compilador_planilha_principal_CE.py` | Consolida os CSVs de `FOLDER_ID` + `Plan_Principal!B5:CH` das unidades, normaliza, remove duplicados, ordena por data e grava `COMPILADO.csv` em `DEST_FOLDER_ID`. Carimba timestamp em `BD_Config_CE!C2`. |
 
 `common.py` centraliza credenciais + retry (compartilhado pelas duas etapas).
 
@@ -26,7 +31,7 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 
 ## Configuracao (env vars — todas com default CE)
 
-### Etapa 2 — `atualizar_plan_principal_CE.py`
+### Etapa 3 — `atualizar_plan_principal_CE.py`
 
 | Variavel | Default | Descricao |
 |----------|---------|-----------|
@@ -38,7 +43,7 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 | `PROPAGACAO_TIMEOUT_SECONDS` | `300` | Timeout da propagacao por unidade. |
 | `RODAR_CHUVA` | `true` | Roda o `preencherChuva` (BF/BG) depois do atualizar. |
 
-### Etapa 3 — `compilador_planilha_principal_CE.py`
+### Etapa 4 — `compilador_planilha_principal_CE.py`
 
 | Variavel | Default | Descricao |
 |----------|---------|-----------|
@@ -64,8 +69,8 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 cd plan_principal
 pip install -r requirements.txt
 $env:GOOGLE_CREDENTIALS = Get-Content ..\credentials.json -Raw
-python atualizar_plan_principal_CE.py     # Etapa 2
-python compilador_planilha_principal_CE.py # Etapa 3
+python atualizar_plan_principal_CE.py      # Etapa 3
+python compilador_planilha_principal_CE.py # Etapa 4
 ```
 
 ## Notas
