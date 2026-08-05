@@ -24,6 +24,41 @@ const FRAME_SEL = "#frameTelasGPM";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const NO_RECORDS = /nenhum registro encontrado/i;
+
+// Pesquisa que nao retornou linhas — NAO e falha: o GPM simplesmente nao
+// renderiza a toolbar de export quando a tabela esta vazia (acontece todo inicio
+// de mes, antes do primeiro servico ser lancado). Quem chama trata como skip.
+class SemResultados extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "SemResultados";
+    this.semResultados = true;
+  }
+}
+
+// Extrai o valor de `alerta_aviso` (SweetAlert que o GPM renderiza no script da
+// tela) do HTML. Casa so a ATRIBUICAO, nunca texto solto: "Nenhum registro
+// encontrado" tambem aparece nas strings de i18n da tela (`MSG_NO_RECORDS`, lang
+// do DataTables) em TODA pesquisa, com ou sem resultado — um regex no innerHTML
+// daria falso-positivo e mascararia export realmente quebrado.
+// Devolve a string do aviso, "" se o GPM nao setou aviso, ou null se nao achou.
+function extrairAvisoDaTela(html) {
+  const m = String(html || "").match(/\balerta_aviso\s*=\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/);
+  return m ? m[2] : null;
+}
+
+// Le o aviso da tela: primeiro a variavel viva no realm do iframe, com fallback
+// pro HTML. Fail-safe: se nao der pra ler, devolve null e quem chama trata como
+// falha de verdade (nunca como "vazio").
+async function avisoDaTela(frame) {
+  const viaJs = await frame
+    .evaluate(() => (typeof alerta_aviso === "string" ? alerta_aviso : null))
+    .catch(() => null);
+  if (typeof viaJs === "string") return viaJs;
+  return extrairAvisoDaTela(await frame.content().catch(() => ""));
+}
+
 // Tenta achar um locator visivel por uma lista de candidatos. Cada candidato e
 // uma string (CSS/seletor Playwright) ou uma funcao (root) => Locator.
 // `root` pode ser uma Page ou um Frame (ambos tem locator/getByX).
@@ -304,7 +339,15 @@ async function pesquisar(frame, cfg) {
   try {
     await frame.waitForSelector(`#${formId}`, { state: "attached", timeout: 45000 });
   } catch (e) {
-    await dumpFrame(frame, "pesquisa-sem-resultados");
+    // Sem toolbar: pode ser pesquisa vazia (normal) ou export quebrado (grave).
+    // O que separa os dois e o GPM ter setado o aviso "Nenhum registro
+    // encontrado". Se nao der pra ler o aviso, tratamos como quebrado.
+    const aviso = await avisoDaTela(frame);
+    const vazio = !!aviso && NO_RECORDS.test(aviso);
+    await dumpFrame(frame, vazio ? "pesquisa-vazia" : "pesquisa-sem-toolbar");
+    if (vazio) {
+      throw new SemResultados(`GPM respondeu "${aviso}": nenhum servico no periodo/contrato pesquisado.`);
+    }
     throw new Error(`Pesquisa: toolbar de export (#${formId}) nao apareceu em 45s apos Pesquisar. Resultados nao renderizaram? (${e.message})`);
   }
   // Espera o texto de contagem tambem (best-effort), so pra log/estabilizacao.
@@ -432,6 +475,7 @@ async function baixarContrato(page, cfg, contrato, mesAno) {
 
 module.exports = {
   login, baixarContrato, extrairCsv, dump, dumpFrame,
+  SemResultados, extrairAvisoDaTela,
   // expostos p/ debug/calibracao (tools/*):
   abrirConsulta, setDataInicio, selecionarContrato, pesquisar, exportar,
 };

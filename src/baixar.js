@@ -16,6 +16,8 @@ async function comRetry(fn, label, tentativas = 2) {
       return await fn();
     } catch (e) {
       err = e;
+      // Pesquisa vazia e deterministica: retentar so queima outro timeout de 45s.
+      if (e.semResultados) break;
       if (i < tentativas) console.warn(`[run] ${label}: tentativa ${i}/${tentativas} falhou (${e.message}); tentando de novo...`);
     }
   }
@@ -34,6 +36,7 @@ async function comRetry(fn, label, tentativas = 2) {
   page.setDefaultTimeout(20000);
 
   const resultados = [];
+  const vazios = [];
   let falhou = false;
   try {
     await login(page, cfg);
@@ -60,6 +63,13 @@ async function comRetry(fn, label, tentativas = 2) {
           resultados.push({ contrato: contrato.prefixo, nomeFinal, md5, bytes, acao: r.acao });
         }
       } catch (e) {
+        // Pesquisa sem linhas nao e falha: preserva o arquivo do mes no Drive e
+        // segue. Todo inicio de mes cai aqui ate o 1o servico ser lancado.
+        if (e.semResultados) {
+          vazios.push(contrato.prefixo);
+          console.log(`[run] ${contrato.prefixo}: nenhum servico em ${mesAno}, nada a enviar (arquivo do mes preservado). ${e.message}`);
+          continue;
+        }
         falhou = true;
         console.error(`[run] ERRO no contrato ${contrato.prefixo}: ${e.message}`);
       }
@@ -74,9 +84,14 @@ async function comRetry(fn, label, tentativas = 2) {
 
   console.log("\n=== Resumo ===");
   for (const r of resultados) console.log(`  ${r.nomeFinal}: ${r.acao} (${r.bytes} bytes, md5=${r.md5})`);
-  if (falhou || resultados.length < cfg.contratos.length) {
+  for (const p of vazios) console.log(`  ${p}: sem servico em ${mesAno} — nada enviado.`);
+  if (falhou || resultados.length + vazios.length < cfg.contratos.length) {
     console.error("[run] terminou COM falhas.");
     process.exit(1);
+  }
+  if (vazios.length === cfg.contratos.length) {
+    console.log(`[run] terminou OK: nenhum contrato tinha servico em ${mesAno} (nada a fazer).`);
+    return;
   }
   console.log("[run] terminou OK.");
 })();

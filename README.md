@@ -22,34 +22,34 @@ Detalhes de cada modulo: [`compilador/README.md`](compilador/README.md) e
 > versao headless da Skill `baixar-consulta-servico-gpm` — so a Etapa 1. Com as
 > Etapas 2-4 o escopo virou o pipeline inteiro, dai o nome atual.
 
-## ⚠️ Estado atual (05/08/2026)
+## Estado atual (05/08/2026)
 
-**Etapa 1 (`baixar`) falha desde 01/08 — por busca vazia, nao por DOM quebrado.**
+**O contrato `SOC.SOT` esta sem nenhum servico lancado desde 01/08.** Com isso o
+GPM nao tem o que exportar, e a Etapa 1 termina **verde sem enviar nada**,
+preservando o CSV do mes que ja esta no Drive:
 
-Erro: `Pesquisa: toolbar de export (#form_principal) nao apareceu em 45s apos Pesquisar.`
+```
+[run] SOC.SOT: nenhum servico em 08.2026, nada a enviar (arquivo do mes preservado).
+```
 
-Diagnostico confirmado pelo artefato `debug` do run: o GPM respondeu a pesquisa
-com o alerta `alerta_aviso = 'Nenhum registro encontrado'` e **sem** o
-`#form_principal` — o GPM nao renderiza a toolbar de export quando nao ha linhas.
-Login, data, contrato e Pesquisar funcionaram; o contrato `SOC.SOT` e que nao tem
-servico lancado de 01/08 pra ca.
+Como se chegou nesse diagnostico (vale pra proxima vez): o dump do run tinha
+`alerta_aviso = 'Nenhum registro encontrado'` e **zero** ocorrencias de
+`#form_principal` — o GPM nao renderiza a toolbar de export quando a tabela esta
+vazia. Login, data, contrato e Pesquisar funcionaram. O historico bate com o
+vira-mes: **27–31/07 = 46 runs 100% success; 01/08 em diante 100% failure**, sem
+mudanca de codigo no intervalo. Nao era seletor.
 
-O historico dos runs bate com o vira-mes: **27–31/07 = 46 runs, 100% success;
-01/08 em diante = 100% failure**. Nada foi alterado no codigo nesse intervalo.
+Ate 05/08/2026 esse caso derrubava o run e comentava na issue de falha a cada 2h;
+hoje o `pesquisar()` distingue os dois casos (ver
+[Pesquisa vazia](#pesquisa-vazia-vs-export-quebrado)).
 
-- **Nao e caso de recalibrar seletores.** A Etapa 1 volta sozinha quando o
-  primeiro servico de agosto for lancado no GPM.
+- A Etapa 1 volta a enviar CSV sozinha quando o primeiro servico de agosto entrar
+  no GPM. Nada a fazer.
 - Se ficar vazio por muito tempo, confira se o contrato
-  (`config.json -> contratos`) nao venceu. Teste que separa os dois casos: rodar
-  local com data de um mes que tinha dado — se exportar, era so mes vazio.
-- Consequencia hoje: `compilador` fica `skipped` e o CSV do mes nao e atualizado.
-- **Etapas 3 e 4 seguem passando** — elas rodam mesmo com o `compilador` skipped
-  (por design do `somente_plan`), so nao rodam se ele **falhar**. O
-  `COMPILADO.csv` e as `Plan_Principal` continuam atualizando com o banco que ja
-  estava no Drive.
-
-> Limitacao conhecida: hoje "mes sem servico" e "export quebrado" dao o mesmo erro
-> e a mesma issue de falha a cada 2h. Ver [Limitacoes](#limitacoes-conhecidas).
+  (`config.json -> contratos`) nao venceu — busca vazia e contrato vencido sao
+  indistinguiveis pelo lado do GPM. Teste: rodar local com data de um mes que
+  tinha dado; se exportar, era so mes vazio.
+- **Etapas 2, 3 e 4 seguem rodando** normalmente com o banco que ja esta no Drive.
 
 ## O que mudou em relacao a Skill original
 
@@ -145,6 +145,24 @@ python plan_principal/atualizar_plan_principal_CE.py        # Etapa 3
 python plan_principal/compilador_planilha_principal_CE.py   # Etapa 4
 ```
 
+## Pesquisa vazia vs export quebrado
+
+Os dois casos chegam no codigo do mesmo jeito: sem `#form_principal` na tela. O
+que os separa e o GPM ter setado `alerta_aviso = 'Nenhum registro encontrado'` no
+script da tela — ai `pesquisar()` (`src/gpm.js`) lanca `SemResultados`, o
+`baixar.js` pula o contrato (sem retry, sem sobrescrever o Drive) e o run termina
+verde. Sem esse aviso, continua sendo erro fatal com issue aberta.
+
+O aviso e lido pelo **valor da variavel**, nunca por regex no HTML: o texto
+"Nenhum registro encontrado" tambem aparece nas strings de i18n da tela
+(`MSG_NO_RECORDS`, lang do DataTables) em **toda** pesquisa, com ou sem resultado
+— um match solto engoliria em silencio um export realmente quebrado. Se o aviso
+nao puder ser lido, o codigo trata como falha (fail-safe). `test/aviso.test.js`
+tranca esse comportamento.
+
+Dumps de debug por caso: `pesquisa-vazia.html` (normal) e `pesquisa-sem-toolbar.html`
+(investigar).
+
 ## Calibracao dos seletores
 
 Os seletores da tela ConsultaServicos sao heuristica no `src/gpm.js`, com override
@@ -179,10 +197,10 @@ impede dois runs (cron + manual) escrevendo no Drive/Sheets ao mesmo tempo.
 
 ## Limitacoes conhecidas
 
-- **Mes sem servico = falha**: se a busca nao retorna linhas, o GPM nao renderiza
-  o `#form_principal` e o `pesquisar()` (`src/gpm.js`) trata isso como erro fatal
-  — mesma mensagem e mesma issue que um export realmente quebrado, a cada 2h. E o
-  que acontece todo inicio de mes, ate o primeiro servico ser lancado.
+- **Mes sem servico nao gera alarme** (desde 05/08/2026): o run passa verde e nao
+  envia nada. O lado ruim e que **contrato vencido tem exatamente a mesma cara** —
+  o Drive simplesmente para de receber CSV novo, calado. Se o mes virar e o
+  arquivo nao aparecer, confira o contrato.
 - **DOM do GPM muda**: quebra a Etapa 1 e exige recalibrar os seletores.
 - **Captcha / 2FA no login**: se o GPM passar a exigir, o login automatico nao
   passa. Ideal seria um usuario de servico sem 2FA.
