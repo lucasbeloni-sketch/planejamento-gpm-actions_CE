@@ -106,15 +106,24 @@ def pad_rows_to_width(values: List[List[Any]], width: int) -> List[List[Any]]:
 
 # =========================
 # INDICES DE FORMATACAO (0-based, relativos a coluna A da saida = coluna B da origem)
-# Configuraveis por env var (letras separadas por virgula). Default: so a data (A).
-# Ajuste FORMAT_NUMBER_COLS / FORMAT_DURATION_COLS conforme o COMPILADO CE precisar.
+# Configuraveis por env var (letras separadas por virgula).
+#
+# FORMAT_NUMBER_COLS calibrado em 2026-08-05 contra o COMPILADO.csv real (215 linhas
+# x 85 colunas): as UNICAS colunas que saiam com ponto decimal eram AX
+# ("REALIZADO PLANEJADO (R$)") e AZ ("PRODUCAO GPM (R$)"), ex. 6453.3 -> 6453,3.
+# AU ("PLANEJADO R$") e AV ("META R$") entram por prevencao: hoje sao inteiros e
+# format_number_value passa int intacto, mas se um dia vierem com centavos ja saem
+# com virgula. As colunas de % (AW/AY/BA/BO) chegam como texto "78%" e nao sao
+# tocadas; as de tempo vem "HH:MM:SS" do Sheets (ver FORMAT_DURATION_COLS).
+# NAO copiar as letras do pipeline BA (AK,AL,AN,AP,BP): o layout do Plan_Principal
+# CE e outro.
 # =========================
 def _parse_cols(env_name: str, default: str) -> List[int]:
     raw = os.getenv(env_name, default)
     return [column_letter_to_number(c.strip()) - 1 for c in raw.split(",") if c.strip()]
 
 FORMAT_DATE_COLUMNS = _parse_cols("FORMAT_DATE_COLS", "A")
-FORMAT_NUMBER_COLUMNS = _parse_cols("FORMAT_NUMBER_COLS", "")
+FORMAT_NUMBER_COLUMNS = _parse_cols("FORMAT_NUMBER_COLS", "AU,AV,AX,AZ")
 FORMAT_DURATION_COLUMNS = _parse_cols("FORMAT_DURATION_COLS", "")
 
 # =========================

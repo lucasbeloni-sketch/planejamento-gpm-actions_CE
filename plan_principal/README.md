@@ -56,12 +56,21 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 | `TIMESTAMP_SPREADSHEET_ID` | `1-_lTK…` | Planilha do timestamp. |
 | `TIMESTAMP_SHEET_NAME` / `TIMESTAMP_CELL` | `BD_Config_CE` / `C2` | Destino do timestamp. |
 | `FORMAT_DATE_COLS` | `A` | Colunas (da saida) tratadas como data (extrai `dd/mm/aaaa`). |
-| `FORMAT_NUMBER_COLS` | `` (vazio) | Colunas convertidas para decimal-virgula. **Calibrar** se o COMPILADO precisar. |
+| `FORMAT_NUMBER_COLS` | `AU,AV,AX,AZ` | Colunas convertidas para decimal-virgula (calibrado em 05/08/2026). |
 
 > As colunas de formatacao sao 0-based relativas a coluna **A da saida** (= coluna
-> **B** da origem, pois o range comeca em B). Por seguranca so a data (A) vem
-> configurada; defina `FORMAT_NUMBER_COLS` se colunas especificas precisarem sair
-> com virgula decimal.
+> **B** da origem, pois o range comeca em B).
+>
+> **Calibracao do `FORMAT_NUMBER_COLS` (05/08/2026):** medido no `COMPILADO.csv`
+> real (215 linhas x 85 colunas). As unicas colunas que saiam com ponto decimal
+> eram `AX` = "REALIZADO PLANEJADO (R$)" e `AZ` = "PRODUCAO GPM (R$)"
+> (`6453.3` -> `6453,3`). `AU` = "PLANEJADO R$" e `AV` = "META R$" entram por
+> prevencao: hoje sao inteiros (passam intactos), mas se vierem com centavos ja
+> saem com virgula. As colunas de `%` (`AW`, `AY`, `BA`, `BO`) chegam como texto
+> `"78%"` e nao sao tocadas — um dia que aparecer `78.5%` vai precisar de
+> tratamento proprio no `format_number_value`. As de tempo vem `HH:MM:SS` do
+> Sheets (sem transformacao). Nao copiar as letras do pipeline BA
+> (`AK,AL,AN,AP,BP`): o layout do `Plan_Principal` CE e outro.
 
 ## Rodar local
 
