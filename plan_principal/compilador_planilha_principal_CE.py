@@ -50,6 +50,14 @@ SOURCE_SPREADSHEET_IDS_ENV = os.getenv("SOURCE_SPREADSHEET_IDS", "").strip()
 SOURCE_SHEET_NAME = os.getenv("SOURCE_SHEET_NAME", "Plan_Principal")
 SOURCE_RANGE_A1 = os.getenv("SOURCE_RANGE_A1", "B5:CH")
 
+# Render da leitura do Sheets. UNFORMATTED_VALUE traz o valor REAL da celula;
+# FORMATTED_VALUE traz o que a celula MOSTRA (ja arredondado pelo formato) e por
+# isso perdia centavos e transformava % em texto. Ver o bloco de FORMATACAO.
+# dateTimeRenderOption=FORMATTED_STRING continua valendo com UNFORMATTED_VALUE, ou
+# seja datas/horas/duracoes seguem chegando como texto ("03/08/2026 - segunda-feira",
+# "11:00") — verificado coluna por coluna na Plan_Principal de Juazeiro.
+SHEET_VALUE_RENDER = os.getenv("SHEET_VALUE_RENDER", "UNFORMATTED_VALUE")
+
 # Destino do timestamp de execucao
 TIMESTAMP_SPREADSHEET_ID = os.getenv("TIMESTAMP_SPREADSHEET_ID", "1-_lTKT4wSDlJtTXkF1tLHstV9h-S3Yq_2cE8jOIC3kI")
 TIMESTAMP_SHEET_NAME = os.getenv("TIMESTAMP_SHEET_NAME", "BD_Config_CE")
@@ -108,13 +116,32 @@ def pad_rows_to_width(values: List[List[Any]], width: int) -> List[List[Any]]:
 # INDICES DE FORMATACAO (0-based, relativos a coluna A da saida = coluna B da origem)
 # Configuraveis por env var (letras separadas por virgula).
 #
-# FORMAT_NUMBER_COLS calibrado em 2026-08-05 contra o COMPILADO.csv real (215 linhas
-# x 85 colunas): as UNICAS colunas que saiam com ponto decimal eram AX
-# ("REALIZADO PLANEJADO (R$)") e AZ ("PRODUCAO GPM (R$)"), ex. 6453.3 -> 6453,3.
-# AU ("PLANEJADO R$") e AV ("META R$") entram por prevencao: hoje sao inteiros e
-# format_number_value passa int intacto, mas se um dia vierem com centavos ja saem
-# com virgula. As colunas de % (AW/AY/BA/BO) chegam como texto "78%" e nao sao
-# tocadas; as de tempo vem "HH:MM:SS" do Sheets (ver FORMAT_DURATION_COLS).
+# Calibrado em 2026-08-05 contra a Plan_Principal real (Juazeiro) e o COMPILADO.csv
+# real (215 linhas x 85 colunas), comparando os dois valueRenderOption:
+#
+#   coluna                     MOSTRA (FORMATTED)   VALOR REAL (UNFORMATTED)
+#   AU PLANEJADO R$            "R$ 10.819"          10818.97      <- centavos perdidos
+#   AV META R$                 "R$ 9.490"           9489.59       <- centavos perdidos
+#   AW % PLAN.                 "114%"               1.1400882...  <- fracao, nao texto
+#
+# Por isso a leitura virou UNFORMATTED_VALUE (ver SHEET_VALUE_RENDER): com
+# FORMATTED_VALUE nenhuma formatacao de saida recuperava os centavos, porque o
+# numero JA chegava arredondado da API.
+#
+# DINHEIRO (FORMAT_NUMBER_COLS = AU,AV,AX,AZ): decimal com virgula, arredondado em
+# MONEY_DECIMALS casas. So sai decimal se o valor ORIGINALMENTE for decimal —
+# inteiro continua inteiro. O arredondamento e obrigatorio: 25 das 83 linhas de AU
+# vinham com ruido de float (6522.999999999999, 8066.639999999999).
+#
+# PORCENTAGEM (FORMAT_PERCENT_COLS = AW,AY,BA,BO): sai como NUMERO, nunca texto.
+# Guardamos a FRACAO, igual a origem (a celula guarda 1,14 e o formato mostra 114%),
+# arredondada em PERCENT_DECIMALS casas -> "1,1401". Escala confirmada na origem:
+# AW vai de 0.138 a 1.749 (fracao, nao pontos percentuais). Os CSVs de meses
+# fechados trazem a % como texto "114%" — esses sao divididos por 100 pra ficarem
+# na MESMA escala das linhas vindas da planilha ao vivo.
+#
+# As colunas de tempo (INICIO/FIM) chegam como "11:00" nos dois modos de render,
+# protegidas pelo dateTimeRenderOption — nao precisam de tratamento.
 # NAO copiar as letras do pipeline BA (AK,AL,AN,AP,BP): o layout do Plan_Principal
 # CE e outro.
 # =========================
@@ -124,7 +151,10 @@ def _parse_cols(env_name: str, default: str) -> List[int]:
 
 FORMAT_DATE_COLUMNS = _parse_cols("FORMAT_DATE_COLS", "A")
 FORMAT_NUMBER_COLUMNS = _parse_cols("FORMAT_NUMBER_COLS", "AU,AV,AX,AZ")
+FORMAT_PERCENT_COLUMNS = _parse_cols("FORMAT_PERCENT_COLS", "AW,AY,BA,BO")
 FORMAT_DURATION_COLUMNS = _parse_cols("FORMAT_DURATION_COLS", "")
+MONEY_DECIMALS = int(os.getenv("MONEY_DECIMALS", "2"))
+PERCENT_DECIMALS = int(os.getenv("PERCENT_DECIMALS", "4"))
 
 # =========================
 # NORMALIZACAO NUMERICA
@@ -379,7 +409,7 @@ def get_sheet_range_values(sheets_service, spreadsheet_id, sheet_name, range_a1)
     resp = execute_with_retries(
         sheets_service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f"{sheet_name}!{range_a1}",
-            valueRenderOption="FORMATTED_VALUE", dateTimeRenderOption="FORMATTED_STRING",
+            valueRenderOption=SHEET_VALUE_RENDER, dateTimeRenderOption="FORMATTED_STRING",
             majorDimension="ROWS",
         ),
         description=f"leitura de {sheet_name}!{range_a1}",
@@ -439,14 +469,61 @@ def format_date_value(value: Any) -> Any:
     match = re.match(r"(\d{2}/\d{2}/\d{4})", value.strip())
     return match.group(1) if match else value
 
-def format_number_value(value: Any) -> Any:
-    if isinstance(value, float):
-        return str(value).replace(".", ",")
+def _decimal_br(numero: float, casas: int, manter_zeros: bool) -> Any:
+    """Formata float como decimal-virgula, arredondado em `casas`.
+
+    manter_zeros=False -> so sai decimal se o valor for decimal (6523.0 -> 6523,
+    6453.30 -> "6453,3"). manter_zeros=True -> casas fixas ("0,7800").
+    """
+    arredondado = round(numero, casas)
+    if not manter_zeros and arredondado == int(arredondado):
+        return int(arredondado)
+    inteiro, _, frac = f"{arredondado:.{casas}f}".partition(".")
+    if not manter_zeros:
+        frac = frac.rstrip("0")
+    return f"{inteiro},{frac}" if frac else inteiro
+
+def format_number_value(value: Any, casas: int = None) -> Any:
+    """Dinheiro/decimal com virgula. Inteiro segue inteiro (decimal so se o valor
+    originalmente for decimal). Arredonda pra matar ruido de float do Sheets."""
+    casas = MONEY_DECIMALS if casas is None else casas
+    if isinstance(value, bool):
+        return value
     if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return _decimal_br(value, casas, manter_zeros=False)
     if isinstance(value, str) and re.fullmatch(r"-?\d+\.\d+", value.strip()):
-        return value.strip().replace(".", ",")
+        return _decimal_br(float(value.strip()), casas, manter_zeros=False)
     return value
+
+def format_percent_value(value: Any) -> Any:
+    """Porcentagem como NUMERO (fracao), nunca texto.
+
+    - Planilha ao vivo (UNFORMATTED_VALUE) ja entrega a fracao: 1.1400882... -> "1,1401".
+    - CSV de mes fechado entrega texto "114%": divide por 100 -> "1,1401" (mesma escala).
+    - Zero sai como 0; texto que nao e numero (cabecalho, "-") passa intacto.
+    """
+    if isinstance(value, bool):
+        return value
+    numero = None
+    if isinstance(value, (int, float)):
+        numero = float(value)
+    elif isinstance(value, str):
+        s = value.strip()
+        if s.endswith("%"):
+            bruto = normalize_numeric_string(s[:-1].strip())
+            if isinstance(bruto, (int, float)):
+                numero = float(bruto) / 100.0
+        else:
+            bruto = normalize_numeric_string(s)
+            if isinstance(bruto, (int, float)):
+                numero = float(bruto)
+    if numero is None:
+        return value
+    if round(numero, PERCENT_DECIMALS) == 0:
+        return 0
+    return _decimal_br(numero, PERCENT_DECIMALS, manter_zeros=True)
 
 def apply_column_formats(rows):
     result = []
@@ -461,6 +538,9 @@ def apply_column_formats(rows):
         for col_idx in FORMAT_NUMBER_COLUMNS:
             if col_idx < len(new_row):
                 new_row[col_idx] = format_number_value(new_row[col_idx])
+        for col_idx in FORMAT_PERCENT_COLUMNS:
+            if col_idx < len(new_row):
+                new_row[col_idx] = format_percent_value(new_row[col_idx])
         # Colunas de duracao ficam como "HH:MM:SS" do Sheets (sem transformacao).
         result.append(new_row)
     return result

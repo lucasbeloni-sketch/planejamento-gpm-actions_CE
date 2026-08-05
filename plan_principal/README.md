@@ -55,22 +55,49 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 | `SOURCE_SPREADSHEET_IDS` | (auto do `BD_Planilhas`) | Lista fixa por virgula; se setada, tem prioridade. |
 | `TIMESTAMP_SPREADSHEET_ID` | `1-_lTK…` | Planilha do timestamp. |
 | `TIMESTAMP_SHEET_NAME` / `TIMESTAMP_CELL` | `BD_Config_CE` / `C2` | Destino do timestamp. |
+| `SHEET_VALUE_RENDER` | `UNFORMATTED_VALUE` | Render da leitura do Sheets. **Nao volte pra `FORMATTED_VALUE`**: ele traz o que a celula *mostra*, ja arredondado (perdia centavos e virava % em texto). |
 | `FORMAT_DATE_COLS` | `A` | Colunas (da saida) tratadas como data (extrai `dd/mm/aaaa`). |
-| `FORMAT_NUMBER_COLS` | `AU,AV,AX,AZ` | Colunas convertidas para decimal-virgula (calibrado em 05/08/2026). |
+| `FORMAT_NUMBER_COLS` | `AU,AV,AX,AZ` | Colunas de dinheiro: decimal-virgula, arredondado em `MONEY_DECIMALS`. |
+| `MONEY_DECIMALS` | `2` | Casas decimais do dinheiro. |
+| `FORMAT_PERCENT_COLS` | `AW,AY,BA,BO` | Colunas de `%`: saem como **numero** (fracao), nunca texto. |
+| `PERCENT_DECIMALS` | `4` | Casas decimais da fracao de `%` (`0,7800`). |
 
 > As colunas de formatacao sao 0-based relativas a coluna **A da saida** (= coluna
 > **B** da origem, pois o range comeca em B).
 >
-> **Calibracao do `FORMAT_NUMBER_COLS` (05/08/2026):** medido no `COMPILADO.csv`
-> real (215 linhas x 85 colunas). As unicas colunas que saiam com ponto decimal
-> eram `AX` = "REALIZADO PLANEJADO (R$)" e `AZ` = "PRODUCAO GPM (R$)"
-> (`6453.3` -> `6453,3`). `AU` = "PLANEJADO R$" e `AV` = "META R$" entram por
-> prevencao: hoje sao inteiros (passam intactos), mas se vierem com centavos ja
-> saem com virgula. As colunas de `%` (`AW`, `AY`, `BA`, `BO`) chegam como texto
-> `"78%"` e nao sao tocadas — um dia que aparecer `78.5%` vai precisar de
-> tratamento proprio no `format_number_value`. As de tempo vem `HH:MM:SS` do
-> Sheets (sem transformacao). Nao copiar as letras do pipeline BA
-> (`AK,AL,AN,AP,BP`): o layout do `Plan_Principal` CE e outro.
+> **Calibracao (05/08/2026)** — medida na `Plan_Principal` real (Juazeiro) e no
+> `COMPILADO.csv` real (215 linhas x 85 colunas), comparando os dois renders:
+>
+> | coluna | MOSTRA (`FORMATTED`) | VALOR REAL (`UNFORMATTED`) |
+> |---|---|---|
+> | `AU` PLANEJADO R$ | `R$ 10.819` | `10818.97` — centavos perdidos |
+> | `AV` META R$ | `R$ 9.490` | `9489.59` — centavos perdidos |
+> | `AW` % PLAN. | `114%` | `1.1400882…` — fracao, nao texto |
+>
+> Por isso a leitura usa `UNFORMATTED_VALUE`: com `FORMATTED_VALUE` **nenhuma**
+> formatacao de saida recuperava os centavos, porque o numero ja chegava
+> arredondado da API. As datas/horas nao quebram — o `dateTimeRenderOption`
+> continua valendo (`'03/08/2026 - segunda-feira'`, `'11:00'` saem iguais nos dois
+> renders; verificado coluna por coluna: so as 6 colunas de dinheiro/`%` mudam).
+>
+> **Dinheiro** (`AU,AV,AX,AZ`): decimal so se o valor ORIGINALMENTE for decimal —
+> inteiro segue inteiro. O arredondamento em 2 casas e obrigatorio: 25 das 83
+> linhas de `AU` vinham com ruido de float (`6522.999999999999`,
+> `8066.639999999999`).
+>
+> **Porcentagem** (`AW,AY,BA,BO`): guardamos a **fracao**, igual a origem (a celula
+> guarda `1,14` e o formato mostra `114%`) -> `1,1401`. Escala confirmada: `AW` vai
+> de `0.138` a `1.749`. Os CSVs de meses fechados trazem `%` como texto `"114%"` e
+> sao divididos por 100, pra ficarem na MESMA escala das linhas da planilha ao
+> vivo. **Quem consome o `COMPILADO.csv` precisa formatar essas 4 colunas como
+> porcentagem** — o valor guardado e `0,78`, nao `78%`.
+>
+> **Precisao das linhas de mes fechado:** o que veio via CSV ja foi exportado
+> arredondado (`"6453"` sem centavos, `"114%"` -> `1,1400`). Isso e irrecuperavel
+> aqui; so as linhas lidas da planilha ao vivo tem precisao cheia.
+>
+> Nao copiar as letras do pipeline BA (`AK,AL,AN,AP,BP`): o layout do
+> `Plan_Principal` CE e outro.
 
 ## Rodar local
 
