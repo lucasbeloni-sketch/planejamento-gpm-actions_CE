@@ -426,7 +426,7 @@ def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str) -> Non
     escrever_formulas_coluna(aba, 6, 15, [_xlookup_cart(r, "J") for r in linhas])   # O
     escrever_formulas_coluna(aba, 6, 16, [_xlookup_cart(r, "AU") for r in linhas])  # P
     escrever_formulas_coluna(aba, 6, 20, [_xlookup_cart(r, "I") for r in linhas])   # T
-    escrever_formulas_coluna(aba, 6, 21, [_xlookup_cart(r, "K") for r in linhas])   # U
+    escrever_formulas_coluna(aba, 6, 21, [_xlookup_cart(r, "BO") for r in linhas])  # U
     escrever_formulas_coluna(aba, 6, 24, [_xlookup_cart(r, "BJ") for r in linhas])  # X
     escrever_formulas_coluna(aba, 6, 25, [_xlookup_cart(r, "BK") for r in linhas])  # Y
     escrever_formulas_coluna(aba, 6, 48, [formula_av(r) for r in linhas])           # AV
