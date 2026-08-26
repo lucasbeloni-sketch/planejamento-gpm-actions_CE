@@ -9,7 +9,7 @@ GPM, compila o banco, reaplica/congela as `Plan_Principal` das unidades e gera o
 |---|-----|-------|-----------|
 | 1 | `baixar` | Node + Playwright | Baixa o relatorio **Consulta Servicos** do GPM CE (`https://sirtecce.gpm.srv.br/`) e sobe o CSV — ja renomeado `PREFIXO - mm.aaaa.csv` — na pasta `Consulta_Servico` do Drive, sobrescrevendo o arquivo do mes. |
 | 2 | `compilador` | Python + pandas | Le os CSVs dessa pasta, normaliza, gera o `BANCO.csv` consolidado e atualiza a aba `BD_ConsultaServ`. |
-| 3 | `plan_principal` | Python + gspread | Para cada unidade da aba `BD_Planilhas`: reaplica as formulas da `Plan_Principal`, espera o calculo, **congela** (cola valores) e roda o `preencherChuva` (BF/BG via Open-Meteo). |
+| 3 | `plan_principal` | Python + gspread | Para cada unidade da aba `BD_Planilhas`: reaplica as formulas da `Plan_Principal`, espera o calculo, **congela** (cola valores) e roda o `preencherChuva` (BP/BQ via Open-Meteo). |
 | 4 | `compilar_planilha` | Python | Consolida os CSVs do `BACKUP_Planejamento` + `Plan_Principal!B5:CH` das unidades no `COMPILADO.csv` (subpasta `COMPLETO`). |
 
 Cada etapa depende da anterior (`needs`). O job `notify` abre/comenta uma issue

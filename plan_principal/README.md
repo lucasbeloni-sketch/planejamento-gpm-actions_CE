@@ -10,7 +10,7 @@ Parte final do pipeline `planejamento-gpm-actions_CE`. Rodam depois do `baixar`
 
 | Etapa | Script | O que faz |
 |-------|--------|-----------|
-| 3 | `atualizar_plan_principal_CE.py` | Para cada unidade em `BD_Planilhas`, reaplica as formulas da `Plan_Principal`, aguarda o calculo, **congela** (cola valores) e carimba `G3`. Depois roda o `preencherChuva` (BF/BG via Open-Meteo). Traducao fiel do Apps Script `atualizarPlan_Principal` + `preencherChuva`. |
+| 3 | `atualizar_plan_principal_CE.py` | Para cada unidade em `BD_Planilhas`, reaplica as formulas da `Plan_Principal`, aguarda o calculo, **congela** (cola valores) e carimba `G3`. Depois roda o `preencherChuva` (BP/BQ via Open-Meteo). Traducao fiel do Apps Script `atualizarPlan_Principal` + `preencherChuva`. |
 | 4 | `compilador_planilha_principal_CE.py` | Consolida os CSVs de `FOLDER_ID` + `Plan_Principal!B5:CH` das unidades, normaliza, remove duplicados, ordena por data e grava `COMPILADO.csv` em `DEST_FOLDER_ID`. Carimba timestamp em `BD_Config_CE!C2`. |
 
 `common.py` centraliza credenciais + retry (compartilhado pelas duas etapas).
@@ -41,7 +41,7 @@ que vai na coluna `BO` da Plan_Principal). Cabecalho e linhas sem ID valido sao 
 | `CALC_WAIT_SECONDS` | `15` | Espera para o Sheets recalcular antes de congelar. |
 | `VERIFICAR_PROPAGACAO` | `true` | Espera o IMPORTRANGE do `BD_Serv_GPM` propagar (auto-pula se A1 nao for IMPORTRANGE). |
 | `PROPAGACAO_TIMEOUT_SECONDS` | `300` | Timeout da propagacao por unidade. |
-| `RODAR_CHUVA` | `true` | Roda o `preencherChuva` (BF/BG) depois do atualizar. |
+| `RODAR_CHUVA` | `true` | Roda o `preencherChuva` (BP/BQ) depois do atualizar. |
 
 ### Etapa 4 — `compilador_planilha_principal_CE.py`
 
@@ -114,8 +114,9 @@ python compilador_planilha_principal_CE.py # Etapa 4
 - **gspread nao tem `flush()`**: as etapas escrevem as formulas, esperam
   `CALC_WAIT_SECONDS` e leem de volta para congelar.
 - **Ordem chuva x atualizar**: o `preencherChuva` roda **depois** do atualizar
-  (igual ao processo manual). Como o `AZ` (que le `BF`) ja foi congelado, ele usa
-  o `BF` da rodada anterior; a chuva atualiza `BF/BG` para a proxima.
+  (igual ao processo manual): o atualizar limpa `BO:BQ` e a chuva repreenche
+  `BP` (% CHUVA) e `BQ` (PREV. DESCRICAO). `BF/BG` **nao** sao colunas de chuva -
+  o `AZ` compara `BF` com `K`.
 - **Formulas fieis ao Apps Script CE**: chave de lookup na `Carteira_Planejador`
   e a coluna `K`; abas de apoio `BD_Config`, `BD_Metas`, `BD_Serv_GPM`. A coluna
   `BO` recebe o valor-BE da unidade (nao mais o `"JUAZEIRO DO NORTE"` fixo).

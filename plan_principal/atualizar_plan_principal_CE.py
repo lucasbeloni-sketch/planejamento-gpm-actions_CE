@@ -8,7 +8,7 @@ operacao CE, rodando headless via gspread. Para cada planilha listada na aba
   1. (opcional) espera a propagacao do IMPORTRANGE no BD_Serv_GPM;
   2. reaplica as formulas da Plan_Principal, aguarda o calculo e congela os
      valores (colar valores), carimbando G3;
-  3. roda o preencherChuva (BF %CHUVA / BG previsao via Open-Meteo).
+  3. roda o preencherChuva (BP %CHUVA / BQ previsao via Open-Meteo).
 
 Diferencas para o Apps Script:
 - o nome da unidade em BO (hardcoded "JUAZEIRO DO NORTE" no manual) vem da
@@ -17,9 +17,9 @@ Diferencas para o Apps Script:
   + leitura de volta ao congelar.
 
 NOTA sobre a ordem chuva-vs-atualizar: igual ao processo manual, o preencherChuva
-roda DEPOIS do atualizar. Como o atualizar ja congelou o AZ (que le BF), o AZ
-usa o BF anterior a esta rodada; a chuva atualiza BF/BG para a proxima. Mantido
-de proposito para espelhar o comportamento atual.
+roda DEPOIS do atualizar (o atualizar limpa BO:BQ e a chuva repreenche BP/BQ).
+ATENCAO: BF/BG NAO sao colunas de chuva - o AZ compara BF com K. Escrever a
+chuva em BF (bug corrigido) zerava o AZ e apagava o BP/BQ da rodada.
 """
 
 import os
@@ -70,9 +70,9 @@ ABA_CART = "Carteira_Planejador"
 
 PLAN_LINHA_DADOS = 6
 PLAN_COL_DATA = 2    # B
-PLAN_COL_TRAB = 8    # H
-PLAN_COL_CHUVA = 58  # BF
-PLAN_COL_PREV = 59   # BG
+PLAN_COL_TRAB = 11   # K (TRABALHO - chave da Carteira_Planejador!E)
+PLAN_COL_CHUVA = 68  # BP (% CHUVA)
+PLAN_COL_PREV = 69   # BQ (PREV. DESCRICAO)
 
 CART_LINHA_DADOS = 6
 CART_COL_TRAB = 5    # E
@@ -471,7 +471,7 @@ def _carimbar_g3(worksheet) -> None:
 
 
 # =========================================================
-# PREENCHER CHUVA (BF/BG) - Open-Meteo
+# PREENCHER CHUVA (BP/BQ) - Open-Meteo
 # =========================================================
 def normaliza_trab(v) -> str:
     if v is None or v == "":
@@ -650,7 +650,7 @@ def _ler_coordenadas(cart):
 
 
 def preencher_chuva(ss_dest: gspread.Spreadsheet) -> None:
-    """Preenche BF (% CHUVA) e BG (PREV. DESCRICAO) da Plan_Principal (Open-Meteo)."""
+    """Preenche BP (% CHUVA) e BQ (PREV. DESCRICAO) da Plan_Principal (Open-Meteo)."""
     plan = abrir_aba(ss_dest, ABA_PLAN)
     cart = abrir_aba(ss_dest, ABA_CART)
 
@@ -661,7 +661,7 @@ def preencher_chuva(ss_dest: gspread.Spreadsheet) -> None:
 
     n = last - PLAN_LINHA_DADOS + 1
     fim = num_para_letra(PLAN_COL_PREV)
-    # B..H precisam de valor legivel (datas/trabalho) -> FORMATTED
+    # B (data) e K (trabalho) precisam de valor legivel -> FORMATTED
     dados = ler_range(plan, f"A{PLAN_LINHA_DADOS}:{fim}{last}",
                       value_render="FORMATTED_VALUE", date_render="FORMATTED_STRING")
 
@@ -688,20 +688,21 @@ def preencher_chuva(ss_dest: gspread.Spreadsheet) -> None:
                 res = climatologia(c["lat"], c["lon"], data, cache)
         except Exception as e:
             res = {"prob": "", "desc": f"erro: {e}"}
-        saida_chuva.append([res["prob"]])
+        prob = res["prob"]
+        saida_chuva.append([""] if prob == "" or prob is None else [prob / 100])
         saida_prev.append([res["desc"]])
 
     executar_com_retry(
-        lambda: plan.update(range_name=f"BF{PLAN_LINHA_DADOS}:BF{last}", values=saida_chuva, value_input_option="USER_ENTERED")
+        lambda: plan.update(range_name=f"BP{PLAN_LINHA_DADOS}:BP{last}", values=saida_chuva, value_input_option="USER_ENTERED")
     )
     executar_com_retry(
-        lambda: plan.update(range_name=f"BG{PLAN_LINHA_DADOS}:BG{last}", values=saida_prev, value_input_option="USER_ENTERED")
+        lambda: plan.update(range_name=f"BQ{PLAN_LINHA_DADOS}:BQ{last}", values=saida_prev, value_input_option="USER_ENTERED")
     )
     try:
-        executar_com_retry(lambda: plan.format(f"BF{PLAN_LINHA_DADOS}:BF{last}", {"numberFormat": {"type": "NUMBER", "pattern": '0"%"'}}))
+        executar_com_retry(lambda: plan.format(f"BP{PLAN_LINHA_DADOS}:BP{last}", {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}))
     except Exception as erro:
-        logging.warning(f"Nao foi possivel formatar BF: {erro}")
-    logging.info("Probabilidade de chuva atualizada (BF/BG).")
+        logging.warning(f"Nao foi possivel formatar BP: {erro}")
+    logging.info("Probabilidade de chuva atualizada (BP/BQ).")
 
 
 # =========================================================
