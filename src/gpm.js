@@ -107,10 +107,18 @@ async function estaLogado(page) {
   return !senhaVisivel;
 }
 
+// Mostra a credencial no log sem vazar: 1o caractere + tamanho. Serve pra
+// diagnosticar secret vazio ou com espaco em volta — o GPM recusa os dois com a
+// mesma mensagem de senha errada ("Usuario e/ou senha invalida!").
+function mascararCred(v) {
+  if (!v) return "(vazio)";
+  return `${v[0]}${"*".repeat(Math.max(0, v.length - 1))} (len=${v.length})`;
+}
+
 async function login(page, cfg) {
   const { baseUrl, selectors: s } = cfg;
-  const user = process.env.GPM_USER;
-  const pass = process.env.GPM_PASS;
+  const user = (process.env.GPM_USER || "").trim();
+  const pass = (process.env.GPM_PASS || "").trim();
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await sleep(1500);
@@ -123,6 +131,7 @@ async function login(page, cfg) {
     await dump(page, "login-sem-credenciais");
     throw new Error("Tela de login detectada mas faltam GPM_USER/GPM_PASS no ambiente.");
   }
+  console.log(`[login] usuario=${mascararCred(user)} em ${baseUrl}`);
 
   try {
     const campoUser = await primeiroVisivel(page, [

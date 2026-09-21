@@ -2,7 +2,9 @@ name: Pipeline Planejamento CE (GPM -> Plan_Principal -> COMPILADO)
 
 on:
   schedule:
-    - cron: "0 */2 * * *"   # de 2 em 2 horas (minuto 0). Ajuste se quiser.
+    - cron: "0 */2 * * *"   # de 2 em 2 horas, no minuto 0. Os robos CE dividem a mesma
+                            # conta do GPM, entao cada um tem seu minuto: 0 aqui,
+                            # 20 no exportacao-obras, 40 no checklists-formulario.
   workflow_dispatch:         # botao manual na aba Actions
     inputs:
       somente_plan:
