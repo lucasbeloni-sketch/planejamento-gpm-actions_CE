@@ -47,7 +47,8 @@ LISTA_PLANILHAS_SPREADSHEET_ID = os.getenv(
 ABA_LISTA_PLANILHAS = os.getenv("ABA_LISTA_PLANILHAS", "BD_Planilhas")
 SOURCE_SPREADSHEET_IDS_ENV = os.getenv("SOURCE_SPREADSHEET_IDS", "").strip()
 
-SOURCE_SHEET_NAME = os.getenv("SOURCE_SHEET_NAME", "Plan_Principal")
+# Abas lidas de cada unidade (mesmo layout B5:CH), separadas por virgula.
+SOURCE_SHEET_NAMES = [a.strip() for a in os.getenv("SOURCE_SHEET_NAMES", "Plan_Principal,Plan_Polidrill").split(",") if a.strip()]
 SOURCE_RANGE_A1 = os.getenv("SOURCE_RANGE_A1", "B5:CH")
 
 # Render da leitura do Sheets. UNFORMATTED_VALUE traz o valor REAL da celula;
@@ -576,10 +577,12 @@ def main():
     else:
         logging.info("Nenhum arquivo CSV encontrado na pasta.")
 
-    # 2) LE PLAN_PRINCIPAL!B5:CH DAS UNIDADES (IDs vindos do BD_Planilhas)
+    # 2) LE <ABA>!B5:CH (SOURCE_SHEET_NAMES) DAS UNIDADES (IDs vindos do BD_Planilhas)
     source_ids = get_source_spreadsheet_ids(sheets_service)
     logging.info(f"Unidades a compilar: {len(source_ids)}")
-    source_rows = collect_source_sheets_data(sheets_service, source_ids, SOURCE_SHEET_NAME, SOURCE_RANGE_A1)
+    source_rows = []
+    for sheet_name in SOURCE_SHEET_NAMES:
+        source_rows.extend(collect_source_sheets_data(sheets_service, source_ids, sheet_name, SOURCE_RANGE_A1))
     if source_rows:
         source_rows = normalize_rows(source_rows, skip_first_row=False)
         source_rows = remove_fully_blank_rows(source_rows)

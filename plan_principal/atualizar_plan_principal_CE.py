@@ -1,5 +1,6 @@
 """
-Etapa 2 (CE) - Atualiza a aba Plan_Principal de cada unidade e preenche a chuva.
+Etapa 2 (CE) - Atualiza as abas de planejamento (ABAS_PLAN = Plan_Principal,
+Plan_Polidrill) de cada unidade e preenche a chuva.
 
 Traducao fiel do Apps Script `atualizarPlan_Principal` + `preencherChuva` da
 operacao CE, rodando headless via gspread. Para cada planilha listada na aba
@@ -65,7 +66,9 @@ PROPAGACAO_POLL_INTERVAL = int(os.getenv("PROPAGACAO_POLL_INTERVAL", "10"))
 # preencherChuva
 RODAR_CHUVA = os.getenv("RODAR_CHUVA", "true").strip().lower() in {"1", "true", "yes"}
 
-ABA_PLAN = "Plan_Principal"
+# Abas de planejamento atualizadas em cada unidade (mesmo layout). A primeira e
+# obrigatoria; as demais sao puladas com aviso se a unidade nao tiver a aba.
+ABAS_PLAN = [a.strip() for a in os.getenv("ABAS_PLAN", "Plan_Principal,Plan_Polidrill").split(",") if a.strip()]
 ABA_CART = "Carteira_Planejador"
 
 PLAN_LINHA_DADOS = 6
@@ -399,15 +402,15 @@ def aguardar_propagacao_importrange(client, ss_dest, nome_planilha) -> None:
 # =========================================================
 # ATUALIZAR PLAN_PRINCIPAL (equivalente ao atualizarPlan_Principal)
 # =========================================================
-def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str) -> None:
-    aba = abrir_aba(ss_dest, ABA_PLAN)
-    logging.info("Atualizando aba Plan_Principal...")
+def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str, nome_aba: str) -> None:
+    aba = abrir_aba(ss_dest, nome_aba)
+    logging.info(f"Atualizando aba {nome_aba}...")
 
     remover_filtro_basico(ss_dest, aba)
     escrever_celula(aba, "G3", "Em Atualizacao")
 
     last = ultima_linha_preenchida(aba, "A:CD")
-    logging.info(f"Ultima linha preenchida da Plan_Principal: {last}")
+    logging.info(f"Ultima linha preenchida da {nome_aba}: {last}")
     if last < PLAN_LINHA_DADOS:
         _carimbar_g3(aba)
         logging.info("Nenhuma linha para atualizar a partir da linha 6.")
@@ -456,7 +459,7 @@ def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str) -> Non
         congelar_intervalo(aba, rng)
 
     _carimbar_g3(aba)
-    logging.info("Plan_Principal atualizada com sucesso.")
+    logging.info(f"{nome_aba} atualizada com sucesso.")
 
 
 def _carimbar_g3(worksheet) -> None:
@@ -649,9 +652,9 @@ def _ler_coordenadas(cart):
     return mapa
 
 
-def preencher_chuva(ss_dest: gspread.Spreadsheet) -> None:
-    """Preenche BP (% CHUVA) e BQ (PREV. DESCRICAO) da Plan_Principal (Open-Meteo)."""
-    plan = abrir_aba(ss_dest, ABA_PLAN)
+def preencher_chuva(ss_dest: gspread.Spreadsheet, nome_aba: str) -> None:
+    """Preenche BP (% CHUVA) e BQ (PREV. DESCRICAO) da aba de planejamento (Open-Meteo)."""
+    plan = abrir_aba(ss_dest, nome_aba)
     cart = abrir_aba(ss_dest, ABA_CART)
 
     coords = _ler_coordenadas(cart)
@@ -702,7 +705,7 @@ def preencher_chuva(ss_dest: gspread.Spreadsheet) -> None:
         executar_com_retry(lambda: plan.format(f"BP{PLAN_LINHA_DADOS}:BP{last}", {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}))
     except Exception as erro:
         logging.warning(f"Nao foi possivel formatar BP: {erro}")
-    logging.info("Probabilidade de chuva atualizada (BP/BQ).")
+    logging.info(f"Probabilidade de chuva atualizada em {nome_aba} (BP/BQ).")
 
 
 # =========================================================
@@ -717,14 +720,23 @@ def executar_para_planilha(client, item, indice, total) -> None:
     ss_dest = executar_com_retry(lambda: client.open_by_key(sid))
 
     aguardar_propagacao_importrange(client, ss_dest, nome)
-    atualizar_plan_principal(ss_dest, valor_be)
 
-    if RODAR_CHUVA:
-        try:
-            preencher_chuva(ss_dest)
-        except Exception as e:
-            # Chuva e best-effort: nao invalida um atualizar bem-sucedido.
-            logging.warning(f"preencherChuva falhou em '{nome}': {e}")
+    abas_existentes = {ws.title for ws in executar_com_retry(ss_dest.worksheets)}
+    for i, nome_aba in enumerate(ABAS_PLAN):
+        if nome_aba not in abas_existentes:
+            if i == 0:
+                raise RuntimeError(f"A aba '{nome_aba}' nao foi encontrada na planilha '{ss_dest.title}'.")
+            logging.warning(f"'{nome}' nao tem a aba '{nome_aba}'. Pulando.")
+            continue
+
+        atualizar_plan_principal(ss_dest, valor_be, nome_aba)
+
+        if RODAR_CHUVA:
+            try:
+                preencher_chuva(ss_dest, nome_aba)
+            except Exception as e:
+                # Chuva e best-effort: nao invalida um atualizar bem-sucedido.
+                logging.warning(f"preencherChuva falhou em '{nome}' / {nome_aba}: {e}")
 
 
 # =========================================================
