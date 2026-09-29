@@ -90,6 +90,12 @@ CLIMO_ANOS = 12
 CLIMO_JANELA_DIAS = 3
 CHUVA_TIMEZONE = os.getenv("CHUVA_TIMEZONE", "America/Fortaleza")
 
+# Cache em disco da climatologia (12 anos de arquivo Open-Meteo por local). O
+# historico so muda na virada do ano, mas baixa-lo a cada run custava 10-30 min
+# e estourava o limite gratuito da API ("erro: API indisponivel" em BQ). O
+# workflow persiste esta pasta entre runs via actions/cache. Vazio = sem cache.
+CHUVA_CACHE_DIR = os.getenv("CHUVA_CACHE_DIR", ".cache/chuva").strip()
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -547,9 +553,12 @@ def resolve_coord(v1, v2):
     return {"lat": v1, "lon": v2}
 
 
+_http = requests.Session()
+
+
 def buscar_json(url: str):
     for tent in range(1, 4):
-        resp = requests.get(url, timeout=60)
+        resp = _http.get(url, timeout=60)
         code = resp.status_code
         if code == 429 or code >= 500:
             time.sleep(1.5 * tent)
@@ -586,15 +595,49 @@ def faixa_clima(p) -> str:
     return "Chuva provavel"
 
 
+def _buscar_com_cache(cache, chave, url):
+    """buscar_json com memo por execucao, inclusive da FALHA: um local que falhou
+    nao e retentado (3 tentativas + sleeps) em cada linha seguinte dele."""
+    if chave not in cache:
+        try:
+            cache[chave] = buscar_json(url)
+        except Exception as e:
+            cache[chave] = e
+    if isinstance(cache[chave], Exception):
+        raise cache[chave]
+    return cache[chave]
+
+
+def _climo_arquivo(ano_ini, ano_fim, lat, lon) -> str:
+    return os.path.join(CHUVA_CACHE_DIR, f"climo_{ano_ini}_{ano_fim}_{lat:.3f}_{lon:.3f}.json")
+
+
+def _ler_climo_disco(caminho):
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _gravar_climo_disco(caminho, j) -> None:
+    try:
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        tmp = caminho + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"daily": {"time": j["daily"]["time"],
+                                 "precipitation_sum": j["daily"]["precipitation_sum"]}}, f)
+        os.replace(tmp, caminho)
+    except OSError as erro:
+        logging.warning(f"Nao foi possivel gravar cache de climatologia {caminho}: {erro}")
+
+
 def previsao(lat, lon, data_alvo, cache):
     chave = f"f_{lat:.3f}_{lon:.3f}"
-    j = cache.get(chave)
-    if not j:
-        url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
-               f"&daily=precipitation_probability_max,weather_code&forecast_days=16"
-               f"&timezone={requests.utils.quote(CHUVA_TIMEZONE)}")
-        j = buscar_json(url)
-        cache[chave] = j
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+           f"&daily=precipitation_probability_max,weather_code&forecast_days=16"
+           f"&timezone={requests.utils.quote(CHUVA_TIMEZONE)}")
+    j = _buscar_com_cache(cache, chave, url)
     tempos = j["daily"]["time"]
     alvo = iso_data(data_alvo)
     idx = tempos.index(alvo) if alvo in tempos else -1
@@ -606,15 +649,27 @@ def previsao(lat, lon, data_alvo, cache):
 
 def climatologia(lat, lon, data_alvo, cache):
     chave = f"c_{lat:.3f}_{lon:.3f}"
-    j = cache.get(chave)
-    if not j:
+    if chave not in cache:
         ano_fim = dt.date.today().year - 1
         ano_ini = ano_fim - CLIMO_ANOS + 1
-        url = (f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}"
-               f"&start_date={ano_ini}-01-01&end_date={ano_fim}-12-31"
-               f"&daily=precipitation_sum&timezone={requests.utils.quote(CHUVA_TIMEZONE)}")
-        j = buscar_json(url)
-        cache[chave] = j
+        # O nome do arquivo leva os anos: na virada do ano o cache velho deixa de
+        # ser usado sozinho.
+        caminho = _climo_arquivo(ano_ini, ano_fim, lat, lon) if CHUVA_CACHE_DIR else None
+        j = _ler_climo_disco(caminho) if caminho else None
+        if j:
+            cache[chave] = j
+            cache["_climo_disco"] = cache.get("_climo_disco", 0) + 1
+        else:
+            url = (f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}"
+                   f"&start_date={ano_ini}-01-01&end_date={ano_fim}-12-31"
+                   f"&daily=precipitation_sum&timezone={requests.utils.quote(CHUVA_TIMEZONE)}")
+            j = _buscar_com_cache(cache, chave, url)
+            cache["_climo_api"] = cache.get("_climo_api", 0) + 1
+            if caminho:
+                _gravar_climo_disco(caminho, j)
+    j = cache[chave]
+    if isinstance(j, Exception):
+        raise j
     tempos = j["daily"]["time"]
     chuvas = j["daily"]["precipitation_sum"]
     alvo_doy = dia_do_ano(data_alvo)
@@ -705,7 +760,10 @@ def preencher_chuva(ss_dest: gspread.Spreadsheet, nome_aba: str) -> None:
         executar_com_retry(lambda: plan.format(f"BP{PLAN_LINHA_DADOS}:BP{last}", {"numberFormat": {"type": "PERCENT", "pattern": "0%"}}))
     except Exception as erro:
         logging.warning(f"Nao foi possivel formatar BP: {erro}")
-    logging.info(f"Probabilidade de chuva atualizada em {nome_aba} (BP/BQ).")
+    n_erros = sum(1 for p in saida_prev if as_text(p[0]).startswith("erro:"))
+    logging.info(f"Probabilidade de chuva atualizada em {nome_aba} (BP/BQ). "
+                 f"Climatologia: {cache.get('_climo_disco', 0)} local(is) do cache, "
+                 f"{cache.get('_climo_api', 0)} baixado(s) da API. Linhas com erro: {n_erros}.")
 
 
 # =========================================================

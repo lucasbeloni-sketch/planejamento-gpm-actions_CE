@@ -100,10 +100,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r plan_principal/requirements.txt
 
+      # Climatologia da chuva (12 anos de Open-Meteo por local) guardada entre runs:
+      # sem isso a Etapa 3 rebaixava tudo a cada run (10-30 min + limite da API).
+      # Chave por ano; dentro do ano, uma chave nova so quando entra local novo.
+      - name: Ano do cache da chuva
+        id: ano
+        run: echo "ano=$(date +%Y)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar cache da climatologia
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/chuva
+          key: chuva-climo-${{ steps.ano.outputs.ano }}-
+          restore-keys: chuva-climo-${{ steps.ano.outputs.ano }}-
+
       - name: Run Etapa 3 - atualizar Plan_Principal (CE)
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          CHUVA_CACHE_DIR: .cache/chuva
         run: python plan_principal/atualizar_plan_principal_CE.py
+
+      # always(): o que foi baixado antes de uma falha tambem vale (gravacao atomica).
+      - name: Salvar cache da climatologia
+        if: ${{ always() && hashFiles('.cache/chuva/**') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/chuva
+          key: chuva-climo-${{ steps.ano.outputs.ano }}-${{ hashFiles('.cache/chuva/**') }}
 
   # Etapa 4: consolida CSVs + Plan_Principal!B5:CH das unidades no COMPILADO.csv.
   compilar_planilha:
