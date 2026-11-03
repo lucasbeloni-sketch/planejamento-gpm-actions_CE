@@ -77,10 +77,29 @@ PLAN_COL_TRAB = 11   # K (TRABALHO - chave da Carteira_Planejador!E)
 PLAN_COL_CHUVA = 68  # BP (% CHUVA)
 PLAN_COL_PREV = 69   # BQ (PREV. DESCRICAO)
 
+CART_LINHA_CABECALHO = 5
 CART_LINHA_DADOS = 6
-CART_COL_TRAB = 5    # E
-CART_COL_COORD1 = 52  # AZ
-CART_COL_COORD2 = 53  # BA
+
+# Colunas da Carteira_Planejador resolvidas PELO NOME do cabecalho (linha 5),
+# nao por letra fixa: o usuario insere colunas na Carteira (ex.: AZ "DATA
+# PLANEJADA" em 29/10/2026) e letra fixa desalinhava M/U/X/Y e as coordenadas
+# da chuva em silencio. Cabecalho ausente ou duplicado = erro ANTES de gravar.
+# chave interna -> nome do cabecalho na Carteira_Planejador
+CART_CABECALHOS = {
+    "trabalho": "TRABALHO",
+    "inspetor": "INSPETOR",
+    "os": "OS",
+    "cliente": "CLIENTE",
+    "endereco": "ENDEREÇO",
+    "id_vistoria": "ID VISTORIA",
+    "municipio": "MUNICÍPIO",
+    "tipo_prioridade": "TIPO DE PRIORIDADE",
+    "alimentador": "ALIMENTADOR",
+    "equip_manobra": "EQUIPAMENTO MANOBRA",
+    "data_vistoria": "DATA VISTORIA",
+    "latitude": "LATITUDE",
+    "longitude": "LONGITUDE",
+}
 
 UTM_ZONA = 24
 UTM_SUL = True
@@ -279,8 +298,35 @@ def buscar_planilhas(ss_lista: gspread.Spreadsheet):
 # =========================================================
 # FORMULAS - PLAN_PRINCIPAL (CE)
 # =========================================================
-def _xlookup_cart(row: int, col_retorno: str) -> str:
-    return f'=XLOOKUP(K{row};Carteira_Planejador!$E:$E;Carteira_Planejador!${col_retorno}:${col_retorno};"")'
+def _norm_cabecalho(v) -> str:
+    return " ".join(str(v or "").split()).upper()
+
+
+def resolver_colunas_carteira(ss_dest: gspread.Spreadsheet) -> dict:
+    """Le a linha de cabecalho da Carteira_Planejador e devolve {chave: letra}."""
+    cart = abrir_aba(ss_dest, ABA_CART)
+    linha = ler_range(cart, f"{CART_LINHA_CABECALHO}:{CART_LINHA_CABECALHO}", value_render="FORMATTED_VALUE")
+    cab = [_norm_cabecalho(v) for v in (linha[0] if linha else [])]
+    cols, erros = {}, []
+    for chave, nome in CART_CABECALHOS.items():
+        alvo = _norm_cabecalho(nome)
+        idx = [i for i, v in enumerate(cab) if v == alvo]
+        if len(idx) != 1:
+            erros.append(f"'{nome}' ({'ausente' if not idx else 'duplicado: ' + ','.join(num_para_letra(i + 1) for i in idx)})")
+            continue
+        cols[chave] = num_para_letra(idx[0] + 1)
+    if erros:
+        raise RuntimeError(
+            f"{ABA_CART} linha {CART_LINHA_CABECALHO}: cabecalho(s) {'; '.join(erros)}. "
+            "Renomeie na planilha ou ajuste CART_CABECALHOS."
+        )
+    logging.info("Colunas da Carteira_Planejador: " + ", ".join(f"{k}={v}" for k, v in cols.items()))
+    return cols
+
+
+def _xlookup_cart(row: int, col_retorno: str, col_chave: str) -> str:
+    return (f'=XLOOKUP(K{row};Carteira_Planejador!${col_chave}:${col_chave};'
+            f'Carteira_Planejador!${col_retorno}:${col_retorno};"")')
 
 
 def formula_av(row: int) -> str:
@@ -345,8 +391,9 @@ def formula_bb(row: int) -> str:
     return f'=IF(B{row}="";"";IFERROR(BA{row}/AW{row};0))'
 
 
-def formula_cd(row: int) -> str:
-    return f'=XLOOKUP($K{row};Carteira_Planejador!$E:$E;Carteira_Planejador!$AT:$AT;"")'
+def formula_cd(row: int, col_retorno: str, col_chave: str) -> str:
+    return (f'=XLOOKUP($K{row};Carteira_Planejador!${col_chave}:${col_chave};'
+            f'Carteira_Planejador!${col_retorno}:${col_retorno};"")')
 
 
 # =========================================================
@@ -408,7 +455,7 @@ def aguardar_propagacao_importrange(client, ss_dest, nome_planilha) -> None:
 # =========================================================
 # ATUALIZAR PLAN_PRINCIPAL (equivalente ao atualizarPlan_Principal)
 # =========================================================
-def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str, nome_aba: str) -> None:
+def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str, nome_aba: str, cc: dict) -> None:
     aba = abrir_aba(ss_dest, nome_aba)
     logging.info(f"Atualizando aba {nome_aba}...")
 
@@ -429,15 +476,15 @@ def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str, nome_a
 
     # -------- Formulas iniciais --------
     logging.info("Aplicando formulas iniciais (E, M:P, T:U, X:Y, AV, AW, AY, BA, BC, BO)...")
-    escrever_formulas_coluna(aba, 6, 5, [_xlookup_cart(r, "AG") for r in linhas])   # E
-    escrever_formulas_coluna(aba, 6, 13, [_xlookup_cart(r, "BL") for r in linhas])  # M
-    escrever_formulas_coluna(aba, 6, 14, [_xlookup_cart(r, "L") for r in linhas])   # N
-    escrever_formulas_coluna(aba, 6, 15, [_xlookup_cart(r, "J") for r in linhas])   # O
-    escrever_formulas_coluna(aba, 6, 16, [_xlookup_cart(r, "AU") for r in linhas])  # P
-    escrever_formulas_coluna(aba, 6, 20, [_xlookup_cart(r, "I") for r in linhas])   # T
-    escrever_formulas_coluna(aba, 6, 21, [_xlookup_cart(r, "BO") for r in linhas])  # U
-    escrever_formulas_coluna(aba, 6, 24, [_xlookup_cart(r, "BJ") for r in linhas])  # X
-    escrever_formulas_coluna(aba, 6, 25, [_xlookup_cart(r, "BK") for r in linhas])  # Y
+    escrever_formulas_coluna(aba, 6, 5, [_xlookup_cart(r, cc["inspetor"], cc["trabalho"]) for r in linhas])   # E
+    escrever_formulas_coluna(aba, 6, 13, [_xlookup_cart(r, cc["os"], cc["trabalho"]) for r in linhas])  # M
+    escrever_formulas_coluna(aba, 6, 14, [_xlookup_cart(r, cc["cliente"], cc["trabalho"]) for r in linhas])   # N
+    escrever_formulas_coluna(aba, 6, 15, [_xlookup_cart(r, cc["endereco"], cc["trabalho"]) for r in linhas])   # O
+    escrever_formulas_coluna(aba, 6, 16, [_xlookup_cart(r, cc["id_vistoria"], cc["trabalho"]) for r in linhas])  # P
+    escrever_formulas_coluna(aba, 6, 20, [_xlookup_cart(r, cc["municipio"], cc["trabalho"]) for r in linhas])   # T
+    escrever_formulas_coluna(aba, 6, 21, [_xlookup_cart(r, cc["tipo_prioridade"], cc["trabalho"]) for r in linhas])  # U
+    escrever_formulas_coluna(aba, 6, 24, [_xlookup_cart(r, cc["alimentador"], cc["trabalho"]) for r in linhas])  # X
+    escrever_formulas_coluna(aba, 6, 25, [_xlookup_cart(r, cc["equip_manobra"], cc["trabalho"]) for r in linhas])  # Y
     escrever_formulas_coluna(aba, 6, 48, [formula_av(r) for r in linhas])           # AV
     escrever_formulas_coluna(aba, 6, 49, [formula_aw(r) for r in linhas])           # AW
     escrever_formulas_coluna(aba, 6, 51, [formula_ay(r) for r in linhas])           # AY
@@ -453,7 +500,7 @@ def atualizar_plan_principal(ss_dest: gspread.Spreadsheet, valor_be: str, nome_a
     escrever_formulas_coluna(aba, 6, 50, [formula_ax(r) for r in linhas])  # AX
     escrever_formulas_coluna(aba, 6, 52, [formula_az(r) for r in linhas])  # AZ
     escrever_formulas_coluna(aba, 6, 54, [formula_bb(r) for r in linhas])  # BB
-    escrever_formulas_coluna(aba, 6, 82, [formula_cd(r) for r in linhas])  # CD
+    escrever_formulas_coluna(aba, 6, 82, [formula_cd(r, cc["data_vistoria"], cc["trabalho"]) for r in linhas])  # CD
 
     logging.info(f"Aguardando calculo das derivadas por {CALC_WAIT_SECONDS}s...")
     time.sleep(CALC_WAIT_SECONDS)
@@ -690,29 +737,29 @@ def climatologia(lat, lon, data_alvo, cache):
     return {"prob": prob, "desc": f"{faixa_clima(prob)} (climatologia, {CLIMO_ANOS} anos)"}
 
 
-def _ler_coordenadas(cart):
-    ncols = max(CART_COL_TRAB, CART_COL_COORD1, CART_COL_COORD2)
-    fim = num_para_letra(ncols)
+def _ler_coordenadas(cart, cc: dict):
+    i_trab, i_c1, i_c2 = (a1_to_rowcol(f"{cc[k]}1")[1] for k in ("trabalho", "latitude", "longitude"))
+    fim = num_para_letra(max(i_trab, i_c1, i_c2))
     valores = ler_range(cart, f"A{CART_LINHA_DADOS}:{fim}")
     mapa = {}
     for row in valores:
-        trab = normaliza_trab(row[CART_COL_TRAB - 1] if len(row) >= CART_COL_TRAB else "")
+        trab = normaliza_trab(row[i_trab - 1] if len(row) >= i_trab else "")
         if not trab:
             continue
-        v1 = row[CART_COL_COORD1 - 1] if len(row) >= CART_COL_COORD1 else None
-        v2 = row[CART_COL_COORD2 - 1] if len(row) >= CART_COL_COORD2 else None
+        v1 = row[i_c1 - 1] if len(row) >= i_c1 else None
+        v2 = row[i_c2 - 1] if len(row) >= i_c2 else None
         ll = resolve_coord(v1, v2)
         if ll:
             mapa[trab] = ll
     return mapa
 
 
-def preencher_chuva(ss_dest: gspread.Spreadsheet, nome_aba: str) -> None:
+def preencher_chuva(ss_dest: gspread.Spreadsheet, nome_aba: str, cc: dict) -> None:
     """Preenche BP (% CHUVA) e BQ (PREV. DESCRICAO) da aba de planejamento (Open-Meteo)."""
     plan = abrir_aba(ss_dest, nome_aba)
     cart = abrir_aba(ss_dest, ABA_CART)
 
-    coords = _ler_coordenadas(cart)
+    coords = _ler_coordenadas(cart, cc)
     last = ultima_linha_preenchida(plan, "A:CD")
     if last < PLAN_LINHA_DADOS:
         return
@@ -780,6 +827,7 @@ def executar_para_planilha(client, item, indice, total) -> None:
     aguardar_propagacao_importrange(client, ss_dest, nome)
 
     abas_existentes = {ws.title for ws in executar_com_retry(ss_dest.worksheets)}
+    cc = resolver_colunas_carteira(ss_dest)
     for i, nome_aba in enumerate(ABAS_PLAN):
         if nome_aba not in abas_existentes:
             if i == 0:
@@ -787,11 +835,11 @@ def executar_para_planilha(client, item, indice, total) -> None:
             logging.warning(f"'{nome}' nao tem a aba '{nome_aba}'. Pulando.")
             continue
 
-        atualizar_plan_principal(ss_dest, valor_be, nome_aba)
+        atualizar_plan_principal(ss_dest, valor_be, nome_aba, cc)
 
         if RODAR_CHUVA:
             try:
-                preencher_chuva(ss_dest, nome_aba)
+                preencher_chuva(ss_dest, nome_aba, cc)
             except Exception as e:
                 # Chuva e best-effort: nao invalida um atualizar bem-sucedido.
                 logging.warning(f"preencherChuva falhou em '{nome}' / {nome_aba}: {e}")
