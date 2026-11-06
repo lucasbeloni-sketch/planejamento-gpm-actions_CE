@@ -19,6 +19,7 @@ import sys
 import re
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any
 
 from googleapiclient.discovery import build
@@ -440,7 +441,7 @@ def collect_source_sheets_data(sheets_service, spreadsheet_ids, sheet_name, rang
 # GOOGLE SHEETS - ESCRITA DE TIMESTAMP
 # =========================
 def write_execution_timestamp(sheets_service):
-    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    timestamp = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
     target_range = f"{TIMESTAMP_SHEET_NAME}!{TIMESTAMP_CELL}"
     logging.info(f"Gravando timestamp '{timestamp}' em {target_range}...")
     execute_with_retries(
